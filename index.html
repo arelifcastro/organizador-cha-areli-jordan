@@ -50,7 +50,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // --- Ícones Inline ---
+        // --- Componente de Ícones Inline SVG ---
         const Icon = ({ name, size = 20, className = "", style = {} }) => {
             const icons = {
                 Users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
@@ -139,10 +139,15 @@
                 if (!user) return;
                 const baseRef = db.collection('artifacts').doc(appId).collection('public').doc('data');
 
-                const unsubSettings = baseRef.collection('settings').doc('main').onSnapshot(doc => {
-                    if (doc.exists) setSettings(doc.data());
+                // Sincronização de Configurações - Corrigido Caminho
+                const unsubSettings = baseRef.collection('config').doc('settings').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (!data.labels) data.labels = { convidadas: 'Lista', cronograma: 'Horários', cardapio: 'Menu', configuracoes: 'Estilo' };
+                        setSettings(data);
+                    }
                     setLoading(false);
-                });
+                }, () => setLoading(false));
 
                 const unsubGuests = baseRef.collection('guests').onSnapshot(snap => {
                     const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -158,7 +163,8 @@
 
             const baseDataRef = db.collection('artifacts').doc(appId).collection('public').doc('data');
 
-            const saveSettings = (s) => user && baseDataRef.collection('settings').doc('main').set(s);
+            // Funções de Escrita com Verificação de User e Caminhos Unificados
+            const saveSettings = (s) => user && baseDataRef.collection('config').doc('settings').set(s);
             const handleAddItem = (col, item) => user && baseDataRef.collection(col).add({ ...item, createdAt: Date.now() });
             const handleUpdateItem = (col, id, data) => user && baseDataRef.collection(col).doc(id).update(data);
             const handleDeleteItem = (col, id) => user && baseDataRef.collection(col).doc(id).delete();
@@ -221,39 +227,41 @@
 
             const GuestDetailModal = ({ guest, onClose }) => (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-pop my-auto">
-                        <div className="relative h-32 md:h-40" style={{ backgroundColor: settings.primaryColor }}>
+                    <div className="bg-white rounded-[2rem] w-full max-w-xl shadow-2xl overflow-hidden animate-pop my-auto">
+                        {/* Cabeçalho do Modal com maior altura para respiro */}
+                        <div className="relative h-40 md:h-48" style={{ backgroundColor: settings.primaryColor }}>
                             <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent"></div>
                             <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/40 text-white rounded-full transition-all"><Icon name="X" size={18} /></button>
                         </div>
-                        <div className="px-5 md:px-6 pb-6 md:pb-8 -mt-12 relative">
-                            <div className="flex flex-col md:flex-row items-center md:items-end gap-4 mb-6">
-                                <div className="w-28 h-28 md:w-32 md:h-32 rounded-2xl bg-white p-1 shadow-xl overflow-hidden border-2 border-white mx-auto md:mx-0">
-                                    {guest.photo ? <img src={guest.photo} className="w-full h-full object-cover rounded-xl" alt="" /> : <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-200"><Icon name="User" size={40} /></div>}
+                        {/* Ajuste do deslocamento para o nome não ficar colado no fundo colorido */}
+                        <div className="px-5 md:px-8 pb-8 -mt-16 relative">
+                            <div className="flex flex-col md:flex-row items-center md:items-end gap-5 mb-8">
+                                <div className="w-32 h-32 md:w-36 md:h-36 rounded-[2rem] bg-white p-1.5 shadow-2xl overflow-hidden border-4 border-white mx-auto md:mx-0">
+                                    {guest.photo ? <img src={guest.photo} className="w-full h-full object-cover rounded-[1.8rem]" alt="" /> : <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-200"><Icon name="User" size={48} /></div>}
                                 </div>
-                                <div className="flex-1 pb-2 text-center md:text-left">
-                                    <h3 className="text-xl md:text-2xl font-serif font-bold text-slate-800 leading-tight">{guest.name}</h3>
-                                    <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-1">
-                                        <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-slate-100 shadow-sm" style={{ backgroundColor: settings.primaryLight, color: settings.primaryColor }}>{guest.category}</span>
-                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-slate-100 shadow-sm ${guest.rsvp === 'Confirmado' ? 'bg-green-50 text-green-600 border-green-100' : 'text-slate-400'}`}>RSVP: {guest.rsvp || 'Pendente'}</span>
+                                <div className="flex-1 pb-2 text-center md:text-left mt-4 md:mt-0">
+                                    <h3 className="text-2xl md:text-3xl font-serif font-bold text-slate-800 leading-tight">{guest.name}</h3>
+                                    <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-2">
+                                        <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-slate-100 shadow-sm" style={{ backgroundColor: settings.primaryLight, color: settings.primaryColor }}>{guest.category}</span>
+                                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-slate-100 shadow-sm ${guest.rsvp === 'Confirmado' ? 'bg-green-50 text-green-600 border-green-100' : 'text-slate-400'}`}>RSVP: {guest.rsvp || 'Pendente'}</span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center md:text-left">
-                                <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-100">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <div className="flex items-center gap-2"><Icon name="Package" style={{ color: settings.primaryColor }} size={14} /><h4 className="font-bold text-slate-700 text-[9px] uppercase tracking-wider">Presente</h4></div>
-                                        {guest.giftNumber && <div className="bg-slate-800 text-white px-2 py-0.5 rounded-md text-xs font-black">#{guest.giftNumber}</div>}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-center md:text-left">
+                                <div className="bg-slate-50/80 p-5 rounded-[1.5rem] border border-slate-100">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div className="flex items-center gap-2"><Icon name="Package" style={{ color: settings.primaryColor }} size={14} /><h4 className="font-bold text-slate-700 text-[10px] uppercase tracking-wider">Presente</h4></div>
+                                        {guest.giftNumber && <div className="bg-slate-800 text-white px-3 py-1 rounded-lg text-xs font-black shadow-md">#{guest.giftNumber}</div>}
                                     </div>
-                                    <div className="aspect-video w-full rounded-lg overflow-hidden mb-2 border border-white shadow-sm bg-white">{guest.giftPhoto ? <img src={guest.giftPhoto} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-200"><Icon name="Gift" size={24} /></div>}</div>
-                                    <p className="text-slate-600 text-[11px] font-semibold italic leading-tight">{guest.giftText || "Pendente"}</p>
+                                    <div className="aspect-video w-full rounded-xl overflow-hidden mb-3 border border-white shadow-sm bg-white">{guest.giftPhoto ? <img src={guest.giftPhoto} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-200"><Icon name="Gift" size={24} /></div>}</div>
+                                    <p className="text-slate-600 text-xs font-semibold italic leading-tight">{guest.giftText || "Detalhes pendentes"}</p>
                                 </div>
-                                <div className="flex flex-col gap-3">
-                                    <div className={`p-4 rounded-xl border shadow-sm flex items-center justify-between ${guest.arrived ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'}`}>
-                                        <div><p className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">Status</p><p className={`text-base font-bold ${guest.arrived ? 'text-green-600' : 'text-slate-300'}`}>{guest.arrived ? 'Presente' : 'Aguardada'}</p></div>
-                                        <Icon name="CheckCircle2" size={20} className={guest.arrived ? "text-green-500" : "text-slate-200"} />
+                                <div className="flex flex-col gap-4">
+                                    <div className={`p-5 rounded-[1.5rem] border shadow-sm flex items-center justify-between ${guest.arrived ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'}`}>
+                                        <div><p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Chegada</p><p className={`text-base font-bold ${guest.arrived ? 'text-green-600' : 'text-slate-300'}`}>{guest.arrived ? 'Já Chegou' : 'Aguardada'}</p></div>
+                                        <Icon name="CheckCircle2" size={24} className={guest.arrived ? "text-green-500" : "text-slate-200"} />
                                     </div>
-                                    <button onClick={onClose} className="w-full py-3.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] hover:bg-black uppercase tracking-widest shadow-md transition-all mt-auto">Fechar</button>
+                                    <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-[10px] hover:bg-black uppercase tracking-widest shadow-lg transition-all mt-auto">Voltar</button>
                                 </div>
                             </div>
                         </div>
@@ -266,13 +274,13 @@
                 const [tempData, setTempData] = useState(item);
                 if (isEditing) {
                     return (
-                        <div className="bg-white p-4 md:p-5 rounded-xl mb-3 border-2 shadow-lg animate-pop" style={{ borderColor: settings.primaryColor + '40' }}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="bg-white p-4 md:p-6 rounded-[1.5rem] mb-4 border-2 shadow-xl animate-pop" style={{ borderColor: settings.primaryColor + '40' }}>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {type === 'guest' ? (
-                                    <><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Nome</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.name || ''} onChange={e => setTempData({...tempData, name: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Grupo</label><select className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.category || ''} onChange={e => setTempData({...tempData, category: e.target.value})}>{categories.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}</select></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">RSVP</label><select className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.rsvp || 'Pendente'} onChange={e => setTempData({...tempData, rsvp: e.target.value})}>{rsvpStatus.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Nº Presente</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm font-black" placeholder="Nº" value={tempData.giftNumber || ''} onChange={e => setTempData({...tempData, giftNumber: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Descrição</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.giftText || ''} onChange={e => setTempData({...tempData, giftText: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Foto Perfil</label><label className="flex items-center justify-center gap-2 p-2.5 bg-white border border-slate-100 rounded-lg cursor-pointer text-[8px] font-bold"><Icon name="Upload" size={10} />{tempData.photo ? 'MUDAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, photo: img}))} /></label></div><div className="space-y-1 lg:col-span-3"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Foto Presente</label><label className="flex items-center justify-center gap-2 p-2.5 bg-white border border-slate-100 rounded-lg cursor-pointer text-[8px] font-bold"><Icon name="Upload" size={10} />{tempData.giftPhoto ? 'MUDAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, giftPhoto: img}))} /></label></div></>
-                                ) : (Object.keys(tempData).filter(k => !['id', 'createdAt'].includes(k)).map(key => (<div key={key} className="space-y-1"><label className="text-[8px] font-bold uppercase text-slate-400">{key}</label><input className="w-full p-2.5 rounded-lg border outline-none text-sm" value={tempData[key] || ''} onChange={e => setTempData({...tempData, [key]: e.target.value})} /></div>)))}
+                                    <><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Nome</label><input className="w-full p-3 rounded-xl bg-slate-50 border-none outline-none text-sm" value={tempData.name || ''} onChange={e => setTempData({...tempData, name: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Grupo</label><select className="w-full p-3 rounded-xl bg-slate-50 border-none outline-none text-sm" value={tempData.category || ''} onChange={e => setTempData({...tempData, category: e.target.value})}>{categories.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}</select></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">RSVP</label><select className="w-full p-3 rounded-xl bg-slate-50 border-none outline-none text-sm" value={tempData.rsvp || 'Pendente'} onChange={e => setTempData({...tempData, rsvp: e.target.value})}>{rsvpStatus.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Nº Presente</label><input className="w-full p-3 rounded-xl bg-slate-50 border-none outline-none text-sm font-black" placeholder="Nº" value={tempData.giftNumber || ''} onChange={e => setTempData({...tempData, giftNumber: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Descrição</label><input className="w-full p-3 rounded-xl bg-slate-50 border-none outline-none text-sm" value={tempData.giftText || ''} onChange={e => setTempData({...tempData, giftText: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Foto Perfil</label><label className="flex items-center justify-center gap-2 p-3 bg-white border border-slate-100 rounded-xl cursor-pointer text-[9px] font-bold"><Icon name="Upload" size={12} />{tempData.photo ? 'ALTERAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, photo: img}))} /></label></div><div className="space-y-1 lg:col-span-3"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Foto Presente</label><label className="flex items-center justify-center gap-2 p-3 bg-white border border-slate-100 rounded-xl cursor-pointer text-[9px] font-bold"><Icon name="Upload" size={12} />{tempData.giftPhoto ? 'ALTERAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, giftPhoto: img}))} /></label></div></>
+                                ) : (Object.keys(tempData).filter(k => !['id', 'createdAt'].includes(k)).map(key => (<div key={key} className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">{key}</label><input className="w-full p-3 rounded-xl border outline-none text-sm" value={tempData[key] || ''} onChange={e => setTempData({...tempData, [key]: e.target.value})} /></div>)))}
                             </div>
-                            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-slate-50"><button onClick={() => setIsEditing(false)} className="px-3 py-1.5 text-slate-400 text-[8px] font-black uppercase tracking-widest">Sair</button><button onClick={() => { onSave(tempData); setIsEditing(false); }} className="px-5 py-2 text-white rounded-lg text-[8px] font-black uppercase shadow-md transition-all" style={{ backgroundColor: settings.primaryColor }}>Guardar</button></div>
+                            <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-slate-50"><button onClick={() => setIsEditing(false)} className="px-5 py-2 text-slate-400 text-[10px] font-black uppercase tracking-widest">Sair</button><button onClick={() => { onSave(tempData); setIsEditing(false); }} className="px-8 py-2.5 text-white rounded-xl text-[10px] font-black uppercase shadow-md transition-all" style={{ backgroundColor: settings.primaryColor }}>Guardar</button></div>
                         </div>
                     );
                 }
@@ -280,36 +288,36 @@
                     return (
                         <div className="group grid grid-cols-12 gap-2 items-center p-3 bg-white border-b border-slate-50 hover:bg-slate-50/60 transition-all rounded-xl mb-1 shadow-sm">
                             <div className="col-span-6 md:col-span-4 flex items-center gap-2 md:gap-3 cursor-pointer" onClick={() => setSelectedGuest(item)}>
-                                <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg flex-shrink-0 overflow-hidden border border-white shadow-sm">{item.photo ? <img src={item.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Icon name="User" size={14} /></div>}</div>
-                                <div className="overflow-hidden leading-tight text-left"><span className="font-bold text-slate-800 text-[11px] md:text-xs block truncate group-hover:text-pink-600">{item.name || "---"}</span><span className="text-[7px] md:text-[8px] font-black uppercase text-slate-400 leading-none">{item.category}</span></div>
+                                <div className="w-10 h-10 rounded-xl flex-shrink-0 overflow-hidden border border-white shadow-sm transition-transform group-hover:scale-110">{item.photo ? <img src={item.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Icon name="User" size={16} /></div>}</div>
+                                <div className="overflow-hidden leading-tight text-left"><span className="font-bold text-slate-800 text-[11px] md:text-xs block truncate group-hover:text-pink-600">{item.name || "---"}</span><span className="text-[8px] font-black uppercase text-slate-400 leading-none">{item.category}</span></div>
                             </div>
-                            <div className="hidden md:block col-span-2 text-center"><span className={`text-[8px] px-2 py-1 rounded-lg font-black uppercase flex items-center justify-center gap-1 mx-auto w-fit border border-slate-100 ${item.rsvp === 'Confirmado' ? 'bg-green-50 text-green-600' : 'bg-slate-50 text-slate-300'}`}>{item.rsvp || 'Pendente'}</span></div>
+                            <div className="hidden md:block col-span-2 text-center"><span className={`text-[8px] px-2 py-1 rounded-lg font-black uppercase flex items-center justify-center gap-1 mx-auto w-fit border border-slate-100 ${item.rsvp === 'Confirmado' ? 'bg-green-50 border-green-100 text-green-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>{item.rsvp || 'Pendente'}</span></div>
                             <div className="col-span-3 md:col-span-3 flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-100 flex-shrink-0 flex items-center justify-center text-[9px] font-black text-slate-400">{item.giftNumber ? `#${item.giftNumber}` : <Icon name="Package" size={12} className="text-slate-200" />}</div>
-                                <p className="hidden md:block text-[9px] text-slate-400 italic truncate max-w-full">{item.giftText || "---"}</p>
+                                <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-100 flex-shrink-0 flex items-center justify-center text-[10px] font-black text-slate-400">{item.giftNumber ? `#${item.giftNumber}` : <Icon name="Package" size={12} className="text-slate-200" />}</div>
+                                <p className="hidden md:block text-[10px] text-slate-400 italic truncate max-w-full">{item.giftText || "---"}</p>
                             </div>
-                            <div className="col-span-2 md:col-span-2 flex justify-center"><button onClick={() => onSave({...item, arrived: !item.arrived})} className={`w-full py-1.5 rounded-lg text-[7px] md:text-[8px] font-black uppercase transition-all shadow-sm ${item.arrived ? 'bg-green-500 text-white font-bold' : 'bg-white border border-slate-200 text-slate-300 hover:border-slate-400'}`}>{item.arrived ? 'VEIO' : 'CHECK'}</button></div>
+                            <div className="col-span-2 md:col-span-2 flex justify-center"><button onClick={() => onSave({...item, arrived: !item.arrived})} className={`w-full py-1.5 rounded-lg text-[8px] font-black uppercase transition-all shadow-sm ${item.arrived ? 'bg-green-500 text-white font-bold' : 'bg-white border border-slate-200 text-slate-300 hover:border-slate-400'}`}>{item.arrived ? 'VEIO' : 'CHECK'}</button></div>
                             <div className="col-span-1 md:col-span-1 flex justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 p-1"><Icon name="Edit2" size={12} /></button><button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 p-1"><Icon name="Trash2" size={12} /></button></div>
                         </div>
                     );
                 }
                 return (
-                    <div className="group flex justify-between items-center p-3 bg-white rounded-xl mb-2 border border-slate-50 transition-all shadow-sm">
-                        <div className="flex gap-4 md:gap-6 flex-wrap">{Object.entries(item).filter(([k]) => !['id', 'createdAt'].includes(k)).map(([k, v]) => (
-                            <div key={k} className="min-w-[60px]"><p className="text-[7px] font-black text-slate-300 uppercase leading-none mb-1">{k}</p><p className="text-[10px] md:text-xs font-bold text-slate-700 leading-tight">{String(v || "")}</p></div>
+                    <div className="group flex justify-between items-center p-3.5 bg-white rounded-xl mb-2 border border-slate-50 transition-all shadow-sm">
+                        <div className="flex gap-5 md:gap-8 flex-wrap">{Object.entries(item).filter(([k]) => !['id', 'createdAt'].includes(k)).map(([k, v]) => (
+                            <div key={k} className="min-w-[70px]"><p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">{k}</p><p className="text-xs font-bold text-slate-700 leading-tight">{String(v || "")}</p></div>
                         ))}</div>
-                        <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setIsEditing(true)} className="text-blue-500 p-1"><Icon name="Edit2" size={14} /></button><button onClick={() => onDelete(item.id)} className="text-red-500 p-1"><Icon name="Trash2" size={14} /></button></div>
+                        <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setIsEditing(true)} className="text-blue-500 p-1.5 hover:bg-blue-50 rounded-lg"><Icon name="Edit2" size={14} /></button><button onClick={() => onDelete(item.id)} className="text-red-500 p-1.5 hover:bg-red-50 rounded-lg"><Icon name="Trash2" size={14} /></button></div>
                     </div>
                 );
             };
 
             return (
                 <div className="min-h-screen pb-32 transition-colors duration-700" style={{ backgroundColor: settings.primaryLight }}>
-                    <header className="bg-white/90 backdrop-blur-xl shadow-md border-b sticky top-0 z-50 px-4 md:px-6 py-4 md:py-5 border-slate-100">
+                    <header className="bg-white/90 backdrop-blur-xl shadow-md border-b sticky top-0 z-50 px-4 md:px-6 py-4 md:py-6 border-slate-100">
                         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
                             <div className="text-center md:text-left cursor-pointer group" onClick={() => setActiveTab('convidadas')}>
                                 <h1 className="text-xl md:text-2xl font-serif font-bold uppercase tracking-tighter transition-all group-hover:scale-105" style={{ color: settings.primaryColor }}>{settings.title}</h1>
-                                <p className="text-[8px] md:text-[9px] font-black tracking-[0.4em] opacity-40 uppercase" style={{ color: settings.primaryColor }}>Gestão Interna</p>
+                                <p className="text-[8px] md:text-[10px] font-black tracking-[0.4em] opacity-40 uppercase" style={{ color: settings.primaryColor }}>Gestão Integrada</p>
                             </div>
                             <nav className="flex gap-1 overflow-x-auto w-full md:w-auto scrollbar-hide py-1">
                                 {[
@@ -318,8 +326,8 @@
                                     { id: 'cardapio', icon: 'Utensils' },
                                     { id: 'configuracoes', icon: 'Settings' },
                                 ].map(tab => (
-                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 md:px-5 py-2 md:py-3 rounded-lg md:rounded-xl text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap shadow-sm ${activeTab === tab.id ? 'text-white scale-105' : 'bg-white text-slate-400 hover:text-slate-600'}`} style={activeTab === tab.id ? { backgroundColor: settings.primaryColor } : {}}>
-                                        <Icon name={tab.icon} size={12} />
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 md:px-6 py-2 md:py-3.5 rounded-lg md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap shadow-sm ${activeTab === tab.id ? 'text-white scale-105 shadow-lg' : 'bg-white text-slate-400 hover:text-slate-600'}`} style={activeTab === tab.id ? { backgroundColor: settings.primaryColor } : {}}>
+                                        <Icon name={tab.icon} size={14} />
                                         {settings.labels?.[tab.id] || tab.id}
                                     </button>
                                 ))}
@@ -327,22 +335,22 @@
                         </div>
                     </header>
 
-                    <main className="max-w-6xl mx-auto px-4 py-6 md:py-8">
+                    <main className="max-w-6xl mx-auto px-4 py-6 md:py-10">
                         {activeTab === 'configuracoes' && (
-                            <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 md:p-8 border border-slate-50 animate-pop">
-                                <div className="flex items-center gap-4 mb-6 md:mb-8 text-slate-800"><Icon name="Settings" size={24} /><h2 className="text-xl md:text-2xl font-serif font-bold">Customização</h2></div>
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-                                    <div className="space-y-4 md:space-y-6">
-                                        <div className="space-y-2"><label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-2">Título do Chá</label><input type="text" className="w-full p-3 md:p-4 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-pink-100 text-base md:text-lg font-serif" value={settings.title || ""} onChange={(e) => saveSettings({...settings, title: e.target.value})} /></div>
-                                        <div className="space-y-2"><label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-2">Cor Principal</label><div className="flex items-center gap-4"><input type="color" className="w-12 h-12 md:w-16 md:h-16 rounded-lg cursor-pointer border-none p-0 overflow-hidden shadow-md" value={settings.primaryColor || "#ec4899"} onChange={(e) => saveSettings({...settings, primaryColor: e.target.value, primaryLight: e.target.value + '15'})} /><div className="flex-1 p-3 md:p-4 bg-slate-50 rounded-xl"><p className="text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">HEX: {settings.primaryColor}</p></div></div></div>
+                            <div className="bg-white rounded-[2rem] md:rounded-[3rem] shadow-xl p-6 md:p-10 border border-slate-50 animate-pop">
+                                <div className="flex items-center gap-4 mb-8 text-slate-800"><Icon name="Settings" size={28} /><h2 className="text-2xl font-serif font-bold">Personalização</h2></div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    <div className="space-y-6 md:space-y-8">
+                                        <div className="space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Título do Evento</label><input type="text" className="w-full p-4 rounded-2xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-pink-100 text-base md:text-xl font-serif" value={settings.title || ""} onChange={(e) => saveSettings({...settings, title: e.target.value})} /></div>
+                                        <div className="space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Cor Principal</label><div className="flex items-center gap-4"><input type="color" className="w-16 h-16 rounded-2xl cursor-pointer border-none p-0 overflow-hidden shadow-md transition-transform hover:scale-105" value={settings.primaryColor || "#ec4899"} onChange={(e) => saveSettings({...settings, primaryColor: e.target.value, primaryLight: e.target.value + '15'})} /><div className="flex-1 p-4 bg-slate-50 rounded-2xl shadow-inner"><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">Código HEX: {settings.primaryColor}</p></div></div></div>
                                     </div>
-                                    <div className="bg-slate-50/50 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-100">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-4">Nomes do Menu (Personalizar)</label>
-                                        <div className="grid grid-cols-2 gap-3 md:gap-4">
+                                    <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 shadow-inner">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-5 text-center">Nomes do Menu Superior</label>
+                                        <div className="grid grid-cols-2 gap-4">
                                             {['convidadas', 'cronograma', 'cardapio', 'configuracoes'].map(key => (
                                                 <div key={key} className="space-y-1">
-                                                    <label className="text-[7px] font-bold text-slate-400 capitalize">{key}</label>
-                                                    <input type="text" className="w-full p-2 md:p-3 rounded-lg bg-white border border-slate-200 outline-none text-[10px]" 
+                                                    <label className="text-[8px] font-bold text-slate-400 capitalize">{key}</label>
+                                                    <input type="text" className="w-full p-3 rounded-xl bg-white border border-slate-200 outline-none text-[11px] font-medium text-slate-600 focus:border-pink-300 transition-all" 
                                                            value={settings.labels?.[key] || ""} 
                                                            onChange={(e) => {
                                                                const newLabels = { ...settings.labels, [key]: e.target.value };
@@ -358,28 +366,28 @@
                         )}
 
                         {activeTab === 'convidadas' && (
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                                    {[{ label: 'Convidadas', val: guests.length, color: settings.primaryColor, dark: true }, { label: 'Confirmadas', val: guests.filter(g => g.rsvp === 'Confirmado').length, color: '#22c55e', dark: false }, { label: 'Em espera', val: guests.filter(g => g.rsvp === 'Pendente' || !g.rsvp).length, color: '#f59e0b', dark: false }, { label: 'No Evento', val: guests.filter(g => g.arrived).length, color: settings.primaryColor, dark: false }].map((card, i) => (<div key={i} className={`p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-md flex flex-col justify-center transition-all`} style={card.dark ? { backgroundColor: card.color, color: 'white' } : { backgroundColor: 'white' }}><p className={`text-[7px] md:text-[8px] font-black uppercase tracking-widest mb-1 ${card.dark ? 'opacity-60' : 'text-slate-300'}`}>{card.label}</p><p className={`text-xl md:text-2xl font-serif font-bold ${!card.dark ? 'text-slate-800' : ''}`} style={!card.dark && card.label === 'No Evento' ? { color: card.color } : {}}>{card.val}</p></div>))}
+                            <div className="space-y-8">
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                                    {[{ label: 'Total', val: guests.length, color: settings.primaryColor, dark: true }, { label: 'Vêm', val: guests.filter(g => g.rsvp === 'Confirmado').length, color: '#22c55e', dark: false }, { label: 'Espera', val: guests.filter(g => g.rsvp === 'Pendente' || !g.rsvp).length, color: '#f59e0b', dark: false }, { label: 'Presentes', val: guests.filter(g => g.arrived).length, color: settings.primaryColor, dark: false }].map((card, i) => (<div key={i} className={`p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-lg flex flex-col justify-center transition-transform hover:translate-y-[-4px]`} style={card.dark ? { backgroundColor: card.color, color: 'white' } : { backgroundColor: 'white' }}><p className={`text-[8px] md:text-[10px] font-black uppercase tracking-widest mb-1 ${card.dark ? 'opacity-60' : 'text-slate-300'}`}>{card.label}</p><p className={`text-2xl md:text-4xl font-serif font-bold ${!card.dark ? 'text-slate-800' : ''}`} style={!card.dark && card.label === 'Presentes' ? { color: card.color } : {}}>{card.val}</p></div>))}
                                 </div>
-                                <div className="bg-white rounded-2xl md:rounded-[2rem] shadow-lg border border-slate-50 overflow-hidden">
-                                    <div className="p-4 md:p-6">
-                                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
-                                            <div className="text-left"><h2 className="text-xl md:text-2xl font-serif font-bold text-slate-800 tracking-tight">{settings.labels?.convidadas || 'Convidadas'}</h2><p className="text-slate-400 text-[10px] font-medium italic tracking-wide">RSVP e presentes numerados.</p></div>
-                                            <div className="flex gap-2 w-full lg:w-auto"><button onClick={() => setIsImportModalOpen(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-slate-50 text-slate-400 px-4 md:px-6 py-2.5 md:py-3.5 rounded-lg md:rounded-xl hover:bg-slate-100 font-black text-[8px] md:text-[9px] tracking-widest uppercase transition-all shadow-sm"><Icon name="ClipboardPaste" size={12} /> Importar</button><button onClick={() => handleAddItem('guests', { name: 'Nova Convidada', category: 'Amigos em Comum', rsvp: 'Pendente', arrived: false })} className="flex-1 lg:flex-none flex items-center justify-center gap-2 text-white px-4 md:px-6 py-2.5 md:py-3.5 rounded-lg md:rounded-xl transition-all font-black text-[8px] md:text-[9px] tracking-widest uppercase shadow-md shadow-pink-100 hover:scale-105" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" size={12} /> Adicionar</button></div>
+                                <div className="bg-white rounded-[2rem] md:rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden">
+                                    <div className="p-5 md:p-10">
+                                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8 text-left">
+                                            <div><h2 className="text-2xl md:text-3xl font-serif font-bold text-slate-800 tracking-tight">{settings.labels?.convidadas || 'Convidadas'}</h2><p className="text-slate-400 text-xs font-medium italic tracking-wide">RSVP e presentes numerados.</p></div>
+                                            <div className="flex gap-2.5 w-full lg:w-auto"><button onClick={() => setIsImportModalOpen(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-slate-50 text-slate-400 px-6 py-3.5 rounded-xl hover:bg-slate-100 transition-all font-black text-[9px] md:text-[10px] tracking-widest uppercase shadow-sm"><Icon name="ClipboardPaste" size={14} /> Importar</button><button onClick={() => handleAddItem('guests', { name: 'Nova Convidada', category: 'Amigos em Comum', rsvp: 'Pendente', arrived: false })} className="flex-1 lg:flex-none flex items-center justify-center gap-2 text-white px-6 py-3.5 rounded-xl transition-all font-black text-[9px] md:text-[10px] tracking-widest uppercase shadow-lg shadow-pink-100 hover:scale-105" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" size={16} /> Nova</button></div>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6"><div className="relative group"><Icon name="Search" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-200 group-focus-within:text-pink-400" size={14} /><input type="text" placeholder="Procurar..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-lg outline-none text-[11px] border-none shadow-inner" value={guestSearch} onChange={e => setGuestSearch(e.target.value)} /></div><div className="bg-slate-50 px-4 py-3 rounded-lg flex items-center gap-3 shadow-inner"><Icon name="Filter" className="text-slate-200" size={14} /><select className="bg-transparent border-none w-full outline-none text-[9px] text-slate-500 font-black tracking-widest uppercase cursor-pointer" value={guestFilter} onChange={e => setGuestFilter(e.target.value)}>{categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>
-                                        <div className="hidden md:grid grid-cols-12 gap-2 px-6 py-3 bg-slate-50/70 rounded-xl mb-4 text-[8px] font-black text-slate-300 uppercase tracking-widest"><div className="col-span-4 text-left">NOME / GRUPO</div><div className="col-span-2 text-center">RSVP</div><div className="col-span-3">Nº PRESENTE</div><div className="col-span-2 text-center">CHEGOU</div><div className="col-span-1 text-right">AÇÕES</div></div>
-                                        <div className="min-h-[300px] space-y-1">{filteredGuests.length > 0 ? filteredGuests.map(guest => (<EditableRow key={guest.id} item={guest} type="guest" onSave={d => handleUpdateItem('guests', guest.id, d)} onDelete={id => handleDeleteItem('guests', id)} />)) : (<div className="flex flex-col items-center justify-center py-20 text-slate-200 gap-3 opacity-50"><Icon name="Users" size={40} strokeWidth={1} /><p className="font-black uppercase tracking-[0.2em] text-[8px]">Sem Registos</p></div>)}</div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8"><div className="relative group"><Icon name="Search" className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-200 group-focus-within:text-pink-400" size={16} /><input type="text" placeholder="Procurar nome..." className="w-full pl-12 pr-6 py-4 bg-slate-50 rounded-2xl outline-none text-xs border-none shadow-inner" value={guestSearch} onChange={e => setGuestSearch(e.target.value)} /></div><div className="bg-slate-50 px-6 py-4 rounded-2xl flex items-center gap-4 shadow-inner"><Icon name="Filter" className="text-slate-200" size={16} /><select className="bg-transparent border-none w-full outline-none text-[10px] text-slate-500 font-black tracking-widest uppercase appearance-none cursor-pointer" value={guestFilter} onChange={e => setGuestFilter(e.target.value)}>{categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>
+                                        <div className="hidden md:grid grid-cols-12 gap-3 px-8 py-5 bg-slate-50/70 rounded-2xl mb-5 text-[10px] font-black text-slate-300 uppercase tracking-widest"><div className="col-span-4 text-left">NOME / GRUPO</div><div className="col-span-2 text-center">RSVP</div><div className="col-span-3">Nº PRESENTE</div><div className="col-span-2 text-center">CHEGOU</div><div className="col-span-1 text-right">AÇÕES</div></div>
+                                        <div className="min-h-[400px] space-y-1.5">{filteredGuests.length > 0 ? filteredGuests.map(guest => (<EditableRow key={guest.id} item={guest} type="guest" onSave={d => handleUpdateItem('guests', guest.id, d)} onDelete={id => handleDeleteItem('guests', id)} />)) : (<div className="flex flex-col items-center justify-center py-32 text-slate-200 gap-4 opacity-50"><Icon name="Users" size={64} strokeWidth={1} /><p className="font-black uppercase tracking-[0.3em] text-[10px]">Sem Registos</p></div>)}</div>
                                     </div>
                                 </div>
                             </div>
                         )}
 
                         {(activeTab === 'cronograma' || activeTab === 'cardapio') && (
-                            <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 border border-slate-50 animate-pop">
-                                <div className="flex justify-between items-center mb-6 md:mb-8"><div className="flex items-center gap-3 text-slate-800"><div className="p-2.5 rounded-xl bg-slate-50 shadow-inner">{activeTab === 'cronograma' ? <Icon name="Calendar" size={20} /> : <Icon name="Utensils" size={20} />}</div><h2 className="text-xl md:text-2xl font-serif font-bold capitalize">{settings.labels?.[activeTab] || activeTab}</h2></div><button onClick={() => { if(activeTab === 'cronograma') handleAddItem('schedule', { time: '00:00', activity: 'Descrição' }); if(activeTab === 'cardapio') handleAddItem('menu', { type: 'Comida', item: 'Item' }); }} className="text-white px-6 py-2.5 rounded-lg font-black text-[8px] md:text-[9px] tracking-widest uppercase shadow-md transition-all hover:scale-105" style={{ backgroundColor: settings.primaryColor }}>Adicionar</button></div>
-                                <div className="space-y-2">{activeTab === 'cronograma' && schedule.sort((a,b) => (String(a.time || '')).localeCompare(String(b.time || ''))).map(item => <EditableRow key={item.id} item={item} onSave={d => handleUpdateItem('schedule', item.id, d)} onDelete={id => handleDeleteItem('schedule', id)} />)}{activeTab === 'cardapio' && menu.map(item => <EditableRow key={item.id} item={item} onSave={d => handleUpdateItem('menu', item.id, d)} onDelete={id => handleDeleteItem('menu', id)} />)}</div>
+                            <div className="bg-white rounded-[2rem] md:rounded-[3rem] shadow-xl p-8 border border-slate-50 animate-pop">
+                                <div className="flex justify-between items-center mb-10"><div className="flex items-center gap-4 text-slate-800"><div className="p-3.5 rounded-2xl bg-slate-50 shadow-inner">{activeTab === 'cronograma' ? <Icon name="Calendar" size={24} /> : <Icon name="Utensils" size={24} />}</div><h2 className="text-2xl md:text-3xl font-serif font-bold capitalize">{settings.labels?.[activeTab] || activeTab}</h2></div><button onClick={() => { if(activeTab === 'cronograma') handleAddItem('schedule', { time: '00:00', activity: 'Descrição' }); if(activeTab === 'cardapio') handleAddItem('menu', { type: 'Comida', item: 'Item' }); }} className="text-white px-8 py-3 rounded-2xl font-black text-[10px] tracking-widest uppercase shadow-lg transition-all hover:scale-105" style={{ backgroundColor: settings.primaryColor }}>Adicionar</button></div>
+                                <div className="space-y-3">{activeTab === 'cronograma' && schedule.sort((a,b) => (String(a.time || '')).localeCompare(String(b.time || ''))).map(item => <EditableRow key={item.id} item={item} onSave={d => handleUpdateItem('schedule', item.id, d)} onDelete={id => handleDeleteItem('schedule', id)} />)}{activeTab === 'cardapio' && menu.map(item => <EditableRow key={item.id} item={item} onSave={d => handleUpdateItem('menu', item.id, d)} onDelete={id => handleDeleteItem('menu', id)} />)}</div>
                             </div>
                         )}
                     </main>
@@ -387,13 +395,13 @@
                     {/* Modal Importação Corrigido */}
                     {isImportModalOpen && (
                         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-lg flex items-center justify-center z-[200] p-4">
-                            <div className="bg-white rounded-2xl md:rounded-[2rem] w-full max-w-lg p-6 md:p-8 shadow-2xl animate-pop border border-slate-50 relative my-auto">
-                                <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-400 rounded-full transition-all z-[210] shadow-sm transition-all"><Icon name="X" size={14} /></button>
-                                <h3 className="text-xl md:text-2xl font-serif font-bold mb-4 md:mb-6 text-slate-800 tracking-tight">Importar Lista</h3>
-                                <textarea className="w-full h-64 md:h-80 p-5 bg-slate-50 border-none rounded-xl font-sans text-xs outline-none resize-none shadow-inner placeholder:text-slate-300" placeholder={"Ana Maria - Família Noiva\nSofia Ramos - Amiga"} value={importText} onChange={e => setImportText(e.target.value)} />
-                                <div className="flex justify-end gap-3 mt-6">
-                                    <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} disabled={isImporting} className="px-5 py-2.5 text-slate-300 font-black text-[8px] uppercase tracking-widest transition-all">Cancelar</button>
-                                    <button onClick={handleBulkImport} disabled={isImporting} className="px-8 py-3 text-white rounded-lg font-black text-[8px] uppercase shadow-md disabled:opacity-50 transition-all" style={{ backgroundColor: settings.primaryColor }}>{isImporting ? 'A PROCESSAR...' : 'IMPORTAR AGORA'}</button>
+                            <div className="bg-white rounded-[2rem] md:rounded-[3rem] w-full max-w-lg p-6 md:p-10 shadow-2xl animate-pop border border-slate-50 relative my-auto">
+                                <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} className="absolute top-6 right-6 p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-400 rounded-full transition-all z-[210] shadow-sm"><Icon name="X" size={16} /></button>
+                                <h3 className="text-2xl font-serif font-bold mb-6 text-slate-800 tracking-tight">Colar Lista</h3>
+                                <textarea className="w-full h-64 md:h-80 p-6 bg-slate-50 border-none rounded-[1.5rem] font-sans text-xs outline-none resize-none shadow-inner placeholder:text-slate-300" placeholder={"Nome - Categoria\nEx: Tia Maria - Família"} value={importText} onChange={e => setImportText(e.target.value)} />
+                                <div className="flex justify-end gap-3 mt-8">
+                                    <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} disabled={isImporting} className="px-6 py-3 text-slate-300 font-black text-[10px] uppercase tracking-widest transition-all">Cancelar</button>
+                                    <button onClick={handleBulkImport} disabled={isImporting} className="px-10 py-4 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg disabled:opacity-50 transition-all shadow-pink-100" style={{ backgroundColor: settings.primaryColor }}>{isImporting ? 'PROCESSANDO...' : 'IMPORTAR AGORA'}</button>
                                 </div>
                             </div>
                         </div>
