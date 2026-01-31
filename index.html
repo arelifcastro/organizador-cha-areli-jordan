@@ -39,9 +39,8 @@
         input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
         input[type="color"]::-webkit-color-swatch { border: none; }
         
-        /* Ajuste para inputs no mobile */
         input, select, textarea {
-            font-size: 16px !important; /* Evita zoom automático no iOS */
+            font-size: 16px !important;
         }
     </style>
 </head>
@@ -51,7 +50,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // --- Componente de Ícones Inline SVG ---
+        // --- Ícones Inline ---
         const Icon = ({ name, size = 20, className = "", style = {} }) => {
             const icons = {
                 Users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
@@ -81,7 +80,7 @@
             );
         };
 
-        // --- Configuração Firebase ---
+        // --- Firebase Setup ---
         const firebaseConfig = {
             apiKey: "AIzaSyAlX_NwqaeMmYjpNgp5rkpUq49h1UrndAs",
             authDomain: "organizador-cha-areli-jordan.firebaseapp.com",
@@ -91,10 +90,10 @@
             appId: "1:891657080136:web:4ca9dd4794de3300d2777d"
         };
 
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
-        const appId = "organizador-cha-v1";
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'organizador-cha-v1';
 
         const App = () => {
             const [user, setUser] = useState(null);
@@ -107,12 +106,7 @@
                 title: 'Meu Chá de Cozinha', 
                 primaryColor: '#ec4899', 
                 primaryLight: '#fdf2f4',
-                labels: {
-                    convidadas: 'Lista',
-                    cronograma: 'Horários',
-                    cardapio: 'Menu',
-                    configuracoes: 'Estilo'
-                }
+                labels: { convidadas: 'Lista', cronograma: 'Horários', cardapio: 'Menu', configuracoes: 'Estilo' }
             });
             
             const [guests, setGuests] = useState([]);
@@ -126,50 +120,53 @@
             const categories = ['Todas', 'Família Noiva', 'Família Noivo', 'Amigos em Comum', 'Amigos Noiva', 'Amigos Noivo'];
             const rsvpStatus = ['Pendente', 'Confirmado', 'Recusado'];
 
+            // Regra 3: Auth Before Queries
             useEffect(() => {
-                const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-                    if (!currentUser) auth.signInAnonymously();
-                    setUser(currentUser);
-                });
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await auth.signInWithCustomToken(__initial_auth_token).catch(() => auth.signInAnonymously());
+                    } else {
+                        await auth.signInAnonymously();
+                    }
+                };
+                initAuth();
+                const unsubscribe = auth.onAuthStateChanged(setUser);
                 return () => unsubscribe();
             }, []);
 
+            // Regra 1: Strict Paths
             useEffect(() => {
                 if (!user) return;
                 const baseRef = db.collection('artifacts').doc(appId).collection('public').doc('data');
 
-                baseRef.collection('config').doc('settings').onSnapshot(doc => {
-                    if (doc.exists) {
-                        const data = doc.data();
-                        if (!data.labels) {
-                            data.labels = { convidadas: 'Lista', cronograma: 'Horários', cardapio: 'Menu', configuracoes: 'Estilo' };
-                        }
-                        setSettings(data);
-                    }
+                const unsubSettings = baseRef.collection('settings').doc('main').onSnapshot(doc => {
+                    if (doc.exists) setSettings(doc.data());
                     setLoading(false);
-                }, () => setLoading(false));
+                });
 
-                baseRef.collection('guests').onSnapshot(snap => {
+                const unsubGuests = baseRef.collection('guests').onSnapshot(snap => {
                     const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
                     setGuests(data);
                 });
 
-                baseRef.collection('schedule').onSnapshot(snap => setSchedule(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-                baseRef.collection('menu').onSnapshot(snap => setMenu(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubSchedule = baseRef.collection('schedule').onSnapshot(snap => setSchedule(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubMenu = baseRef.collection('menu').onSnapshot(snap => setMenu(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+                return () => { unsubSettings(); unsubGuests(); unsubSchedule(); unsubMenu(); };
             }, [user]);
 
             const baseDataRef = db.collection('artifacts').doc(appId).collection('public').doc('data');
-            const saveSettings = (s) => baseDataRef.collection('config').doc('settings').set(s);
-            const handleAddItem = (col, item) => baseDataRef.collection(col).add({ ...item, createdAt: Date.now() });
-            const handleUpdateItem = (col, id, data) => baseDataRef.collection(col).doc(id).update(data);
-            const handleDeleteItem = (col, id) => baseDataRef.collection(col).doc(id).delete();
+
+            const saveSettings = (s) => user && baseDataRef.collection('settings').doc('main').set(s);
+            const handleAddItem = (col, item) => user && baseDataRef.collection(col).add({ ...item, createdAt: Date.now() });
+            const handleUpdateItem = (col, id, data) => user && baseDataRef.collection(col).doc(id).update(data);
+            const handleDeleteItem = (col, id) => user && baseDataRef.collection(col).doc(id).delete();
 
             const handleBulkImport = async () => {
-                const text = importText.trim();
-                if (!text || isImporting) return;
+                if (!importText.trim() || isImporting || !user) return;
                 setIsImporting(true);
-                const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+                const lines = importText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
                 try {
                     const batch = db.batch();
                     const col = baseDataRef.collection('guests');
@@ -188,7 +185,7 @@
                     setImportText('');
                     setIsImportModalOpen(false);
                 } catch (error) {
-                    console.error(error);
+                    console.error("Erro import:", error);
                 } finally {
                     setIsImporting(false);
                 }
@@ -213,10 +210,10 @@
 
             if (loading && !user) {
                 return (
-                    <div className="min-h-screen flex items-center justify-center bg-white">
-                        <div className="flex flex-col items-center">
+                    <div className="min-h-screen flex items-center justify-center bg-white p-4">
+                        <div className="flex flex-col items-center text-center">
                             <div className="w-10 h-10 border-4 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
-                            <p className="mt-4 text-xs font-bold text-slate-400 uppercase tracking-widest">A carregar...</p>
+                            <p className="mt-4 text-xs font-bold text-slate-400 uppercase">A ligar ao servidor...</p>
                         </div>
                     </div>
                 );
@@ -224,48 +221,39 @@
 
             const GuestDetailModal = ({ guest, onClose }) => (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto">
-                    <div className="bg-white rounded-[2rem] w-full max-w-xl shadow-2xl overflow-hidden animate-pop my-auto">
+                    <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-pop my-auto">
                         <div className="relative h-32 md:h-40" style={{ backgroundColor: settings.primaryColor }}>
                             <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent"></div>
-                            <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/40 text-white rounded-full transition-all">
-                                <Icon name="X" size={18} />
-                            </button>
+                            <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/40 text-white rounded-full transition-all"><Icon name="X" size={18} /></button>
                         </div>
                         <div className="px-5 md:px-6 pb-6 md:pb-8 -mt-12 relative">
                             <div className="flex flex-col md:flex-row items-center md:items-end gap-4 mb-6">
-                                <div className="w-28 h-28 md:w-32 md:h-32 rounded-2xl bg-white p-1 shadow-xl overflow-hidden border-2 border-white">
+                                <div className="w-28 h-28 md:w-32 md:h-32 rounded-2xl bg-white p-1 shadow-xl overflow-hidden border-2 border-white mx-auto md:mx-0">
                                     {guest.photo ? <img src={guest.photo} className="w-full h-full object-cover rounded-xl" alt="" /> : <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-200"><Icon name="User" size={40} /></div>}
                                 </div>
                                 <div className="flex-1 pb-2 text-center md:text-left">
                                     <h3 className="text-xl md:text-2xl font-serif font-bold text-slate-800 leading-tight">{guest.name}</h3>
                                     <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-1">
                                         <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-slate-100 shadow-sm" style={{ backgroundColor: settings.primaryLight, color: settings.primaryColor }}>{guest.category}</span>
-                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-slate-100 shadow-sm ${guest.rsvp === 'Confirmado' ? 'bg-green-50 text-green-600 border-green-100' : 'text-slate-400'}`}>
-                                            RSVP: {guest.rsvp || 'Pendente'}
-                                        </span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-slate-100 shadow-sm ${guest.rsvp === 'Confirmado' ? 'bg-green-50 text-green-600 border-green-100' : 'text-slate-400'}`}>RSVP: {guest.rsvp || 'Pendente'}</span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center md:text-left">
                                 <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-100">
                                     <div className="flex justify-between items-center mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <Icon name="Package" style={{ color: settings.primaryColor }} size={14} />
-                                            <h4 className="font-bold text-slate-700 text-[9px] uppercase tracking-wider">Presente</h4>
-                                        </div>
+                                        <div className="flex items-center gap-2"><Icon name="Package" style={{ color: settings.primaryColor }} size={14} /><h4 className="font-bold text-slate-700 text-[9px] uppercase tracking-wider">Presente</h4></div>
                                         {guest.giftNumber && <div className="bg-slate-800 text-white px-2 py-0.5 rounded-md text-xs font-black">#{guest.giftNumber}</div>}
                                     </div>
-                                    <div className="aspect-video w-full rounded-lg overflow-hidden mb-2 border border-white shadow-sm bg-white">
-                                        {guest.giftPhoto ? <img src={guest.giftPhoto} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-200"><Icon name="Gift" size={24} /></div>}
-                                    </div>
-                                    <p className="text-slate-600 text-[11px] font-semibold italic text-center leading-tight">{guest.giftText || "Pendente"}</p>
+                                    <div className="aspect-video w-full rounded-lg overflow-hidden mb-2 border border-white shadow-sm bg-white">{guest.giftPhoto ? <img src={guest.giftPhoto} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-200"><Icon name="Gift" size={24} /></div>}</div>
+                                    <p className="text-slate-600 text-[11px] font-semibold italic leading-tight">{guest.giftText || "Pendente"}</p>
                                 </div>
                                 <div className="flex flex-col gap-3">
                                     <div className={`p-4 rounded-xl border shadow-sm flex items-center justify-between ${guest.arrived ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'}`}>
-                                        <div><p className="text-[8px] font-black text-slate-400 uppercase">Status</p><p className={`text-sm md:text-base font-bold ${guest.arrived ? 'text-green-600' : 'text-slate-300'}`}>{guest.arrived ? 'Presente' : 'Aguardada'}</p></div>
+                                        <div><p className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">Status</p><p className={`text-base font-bold ${guest.arrived ? 'text-green-600' : 'text-slate-300'}`}>{guest.arrived ? 'Presente' : 'Aguardada'}</p></div>
                                         <Icon name="CheckCircle2" size={20} className={guest.arrived ? "text-green-500" : "text-slate-200"} />
                                     </div>
-                                    <button onClick={onClose} className="w-full py-3.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] hover:bg-black uppercase tracking-widest transition-all mt-auto shadow-md">Voltar</button>
+                                    <button onClick={onClose} className="w-full py-3.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] hover:bg-black uppercase tracking-widest shadow-md transition-all mt-auto">Fechar</button>
                                 </div>
                             </div>
                         </div>
@@ -281,10 +269,10 @@
                         <div className="bg-white p-4 md:p-5 rounded-xl mb-3 border-2 shadow-lg animate-pop" style={{ borderColor: settings.primaryColor + '40' }}>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                 {type === 'guest' ? (
-                                    <><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Nome</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.name || ''} onChange={e => setTempData({...tempData, name: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Grupo</label><select className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.category || ''} onChange={e => setTempData({...tempData, category: e.target.value})}>{categories.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}</select></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">RSVP</label><select className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.rsvp || 'Pendente'} onChange={e => setTempData({...tempData, rsvp: e.target.value})}>{rsvpStatus.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Nº Presente</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm font-black" placeholder="Nº" value={tempData.giftNumber || ''} onChange={e => setTempData({...tempData, giftNumber: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Descrição</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.giftText || ''} onChange={e => setTempData({...tempData, giftText: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Foto Perfil</label><label className="flex items-center justify-center gap-2 p-2.5 bg-white border border-slate-100 rounded-lg cursor-pointer text-[8px] font-bold"><Icon name="Upload" size={10} />{tempData.photo ? 'ALTERAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, photo: img}))} /></label></div><div className="space-y-1 lg:col-span-3"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Foto Presente</label><label className="flex items-center justify-center gap-2 p-2.5 bg-white border border-slate-100 rounded-lg cursor-pointer text-[8px] font-bold"><Icon name="Upload" size={10} />{tempData.giftPhoto ? 'ALTERAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, giftPhoto: img}))} /></label></div></>
+                                    <><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Nome</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.name || ''} onChange={e => setTempData({...tempData, name: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Grupo</label><select className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.category || ''} onChange={e => setTempData({...tempData, category: e.target.value})}>{categories.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}</select></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">RSVP</label><select className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.rsvp || 'Pendente'} onChange={e => setTempData({...tempData, rsvp: e.target.value})}>{rsvpStatus.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Nº Presente</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm font-black" placeholder="Nº" value={tempData.giftNumber || ''} onChange={e => setTempData({...tempData, giftNumber: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Descrição</label><input className="w-full p-2.5 rounded-lg bg-slate-50 border-none outline-none text-sm" value={tempData.giftText || ''} onChange={e => setTempData({...tempData, giftText: e.target.value})} /></div><div className="space-y-1"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Foto Perfil</label><label className="flex items-center justify-center gap-2 p-2.5 bg-white border border-slate-100 rounded-lg cursor-pointer text-[8px] font-bold"><Icon name="Upload" size={10} />{tempData.photo ? 'MUDAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, photo: img}))} /></label></div><div className="space-y-1 lg:col-span-3"><label className="text-[8px] font-black uppercase text-slate-400 ml-1">Foto Presente</label><label className="flex items-center justify-center gap-2 p-2.5 bg-white border border-slate-100 rounded-lg cursor-pointer text-[8px] font-bold"><Icon name="Upload" size={10} />{tempData.giftPhoto ? 'MUDAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, giftPhoto: img}))} /></label></div></>
                                 ) : (Object.keys(tempData).filter(k => !['id', 'createdAt'].includes(k)).map(key => (<div key={key} className="space-y-1"><label className="text-[8px] font-bold uppercase text-slate-400">{key}</label><input className="w-full p-2.5 rounded-lg border outline-none text-sm" value={tempData[key] || ''} onChange={e => setTempData({...tempData, [key]: e.target.value})} /></div>)))}
                             </div>
-                            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-slate-50"><button onClick={() => setIsEditing(false)} className="px-3 py-1.5 text-slate-400 text-[8px] font-black uppercase tracking-widest">Sair</button><button onClick={() => { onSave(tempData); setIsEditing(false); }} className="px-5 py-2 text-white rounded-lg text-[8px] font-black uppercase" style={{ backgroundColor: settings.primaryColor }}>Guardar</button></div>
+                            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-slate-50"><button onClick={() => setIsEditing(false)} className="px-3 py-1.5 text-slate-400 text-[8px] font-black uppercase tracking-widest">Sair</button><button onClick={() => { onSave(tempData); setIsEditing(false); }} className="px-5 py-2 text-white rounded-lg text-[8px] font-black uppercase shadow-md transition-all" style={{ backgroundColor: settings.primaryColor }}>Guardar</button></div>
                         </div>
                     );
                 }
@@ -293,24 +281,24 @@
                         <div className="group grid grid-cols-12 gap-2 items-center p-3 bg-white border-b border-slate-50 hover:bg-slate-50/60 transition-all rounded-xl mb-1 shadow-sm">
                             <div className="col-span-6 md:col-span-4 flex items-center gap-2 md:gap-3 cursor-pointer" onClick={() => setSelectedGuest(item)}>
                                 <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg flex-shrink-0 overflow-hidden border border-white shadow-sm">{item.photo ? <img src={item.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Icon name="User" size={14} /></div>}</div>
-                                <div className="overflow-hidden leading-tight"><span className="font-bold text-slate-800 text-[11px] md:text-xs block truncate group-hover:text-pink-600">{item.name || "---"}</span><span className="text-[7px] md:text-[8px] font-black uppercase text-slate-400">{item.category}</span></div>
+                                <div className="overflow-hidden leading-tight text-left"><span className="font-bold text-slate-800 text-[11px] md:text-xs block truncate group-hover:text-pink-600">{item.name || "---"}</span><span className="text-[7px] md:text-[8px] font-black uppercase text-slate-400 leading-none">{item.category}</span></div>
                             </div>
-                            <div className="hidden md:block col-span-2 text-center"><span className={`text-[8px] px-2 py-1 rounded-lg font-black uppercase flex items-center justify-center gap-1 mx-auto w-fit border ${item.rsvp === 'Confirmado' ? 'bg-green-50 border-green-100 text-green-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>{item.rsvp || 'Pendente'}</span></div>
+                            <div className="hidden md:block col-span-2 text-center"><span className={`text-[8px] px-2 py-1 rounded-lg font-black uppercase flex items-center justify-center gap-1 mx-auto w-fit border border-slate-100 ${item.rsvp === 'Confirmado' ? 'bg-green-50 text-green-600' : 'bg-slate-50 text-slate-300'}`}>{item.rsvp || 'Pendente'}</span></div>
                             <div className="col-span-3 md:col-span-3 flex items-center gap-2">
                                 <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-100 flex-shrink-0 flex items-center justify-center text-[9px] font-black text-slate-400">{item.giftNumber ? `#${item.giftNumber}` : <Icon name="Package" size={12} className="text-slate-200" />}</div>
                                 <p className="hidden md:block text-[9px] text-slate-400 italic truncate max-w-full">{item.giftText || "---"}</p>
                             </div>
-                            <div className="col-span-2 md:col-span-2 flex justify-center"><button onClick={() => onSave({...item, arrived: !item.arrived})} className={`w-full py-1.5 rounded-lg text-[7px] md:text-[8px] font-black uppercase transition-all shadow-sm ${item.arrived ? 'bg-green-500 text-white font-bold' : 'bg-white border border-slate-200 text-slate-300'}`}>{item.arrived ? 'VEIO' : 'CHECK'}</button></div>
-                            <div className="col-span-1 md:col-span-1 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 p-1"><Icon name="Edit2" size={12} /></button><button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 p-1"><Icon name="Trash2" size={12} /></button></div>
+                            <div className="col-span-2 md:col-span-2 flex justify-center"><button onClick={() => onSave({...item, arrived: !item.arrived})} className={`w-full py-1.5 rounded-lg text-[7px] md:text-[8px] font-black uppercase transition-all shadow-sm ${item.arrived ? 'bg-green-500 text-white font-bold' : 'bg-white border border-slate-200 text-slate-300 hover:border-slate-400'}`}>{item.arrived ? 'VEIO' : 'CHECK'}</button></div>
+                            <div className="col-span-1 md:col-span-1 flex justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 p-1"><Icon name="Edit2" size={12} /></button><button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 p-1"><Icon name="Trash2" size={12} /></button></div>
                         </div>
                     );
                 }
                 return (
                     <div className="group flex justify-between items-center p-3 bg-white rounded-xl mb-2 border border-slate-50 transition-all shadow-sm">
                         <div className="flex gap-4 md:gap-6 flex-wrap">{Object.entries(item).filter(([k]) => !['id', 'createdAt'].includes(k)).map(([k, v]) => (
-                            <div key={k} className="min-w-[60px]"><p className="text-[7px] font-black text-slate-300 uppercase leading-none mb-1">{k}</p><p className="text-[10px] md:text-xs font-bold text-slate-700">{String(v || "")}</p></div>
+                            <div key={k} className="min-w-[60px]"><p className="text-[7px] font-black text-slate-300 uppercase leading-none mb-1">{k}</p><p className="text-[10px] md:text-xs font-bold text-slate-700 leading-tight">{String(v || "")}</p></div>
                         ))}</div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100"><button onClick={() => setIsEditing(true)} className="text-blue-500 p-1"><Icon name="Edit2" size={12} /></button><button onClick={() => onDelete(item.id)} className="text-red-500 p-1"><Icon name="Trash2" size={12} /></button></div>
+                        <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setIsEditing(true)} className="text-blue-500 p-1"><Icon name="Edit2" size={14} /></button><button onClick={() => onDelete(item.id)} className="text-red-500 p-1"><Icon name="Trash2" size={14} /></button></div>
                     </div>
                 );
             };
@@ -321,7 +309,7 @@
                         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
                             <div className="text-center md:text-left cursor-pointer group" onClick={() => setActiveTab('convidadas')}>
                                 <h1 className="text-xl md:text-2xl font-serif font-bold uppercase tracking-tighter transition-all group-hover:scale-105" style={{ color: settings.primaryColor }}>{settings.title}</h1>
-                                <p className="text-[8px] md:text-[9px] font-black tracking-[0.4em] opacity-40 uppercase" style={{ color: settings.primaryColor }}>Organizador Interno</p>
+                                <p className="text-[8px] md:text-[9px] font-black tracking-[0.4em] opacity-40 uppercase" style={{ color: settings.primaryColor }}>Gestão Interna</p>
                             </div>
                             <nav className="flex gap-1 overflow-x-auto w-full md:w-auto scrollbar-hide py-1">
                                 {[
@@ -330,7 +318,7 @@
                                     { id: 'cardapio', icon: 'Utensils' },
                                     { id: 'configuracoes', icon: 'Settings' },
                                 ].map(tab => (
-                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 md:px-5 py-2 md:py-3 rounded-lg md:rounded-xl text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'text-white shadow-lg scale-105' : 'bg-white text-slate-400 hover:text-slate-600'}`} style={activeTab === tab.id ? { backgroundColor: settings.primaryColor } : {}}>
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-3 md:px-5 py-2 md:py-3 rounded-lg md:rounded-xl text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap shadow-sm ${activeTab === tab.id ? 'text-white scale-105' : 'bg-white text-slate-400 hover:text-slate-600'}`} style={activeTab === tab.id ? { backgroundColor: settings.primaryColor } : {}}>
                                         <Icon name={tab.icon} size={12} />
                                         {settings.labels?.[tab.id] || tab.id}
                                     </button>
@@ -342,14 +330,14 @@
                     <main className="max-w-6xl mx-auto px-4 py-6 md:py-8">
                         {activeTab === 'configuracoes' && (
                             <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 md:p-8 border border-slate-50 animate-pop">
-                                <div className="flex items-center gap-4 mb-6 md:mb-8"><Icon name="Settings" size={24} className="text-slate-700" /><h2 className="text-xl md:text-2xl font-serif font-bold text-slate-800">Customização</h2></div>
+                                <div className="flex items-center gap-4 mb-6 md:mb-8 text-slate-800"><Icon name="Settings" size={24} /><h2 className="text-xl md:text-2xl font-serif font-bold">Customização</h2></div>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                                     <div className="space-y-4 md:space-y-6">
                                         <div className="space-y-2"><label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-2">Título do Chá</label><input type="text" className="w-full p-3 md:p-4 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-pink-100 text-base md:text-lg font-serif" value={settings.title || ""} onChange={(e) => saveSettings({...settings, title: e.target.value})} /></div>
                                         <div className="space-y-2"><label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-2">Cor Principal</label><div className="flex items-center gap-4"><input type="color" className="w-12 h-12 md:w-16 md:h-16 rounded-lg cursor-pointer border-none p-0 overflow-hidden shadow-md" value={settings.primaryColor || "#ec4899"} onChange={(e) => saveSettings({...settings, primaryColor: e.target.value, primaryLight: e.target.value + '15'})} /><div className="flex-1 p-3 md:p-4 bg-slate-50 rounded-xl"><p className="text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">HEX: {settings.primaryColor}</p></div></div></div>
                                     </div>
                                     <div className="bg-slate-50/50 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-slate-100">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-4">Nomes do Menu</label>
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-4">Nomes do Menu (Personalizar)</label>
                                         <div className="grid grid-cols-2 gap-3 md:gap-4">
                                             {['convidadas', 'cronograma', 'cardapio', 'configuracoes'].map(key => (
                                                 <div key={key} className="space-y-1">
@@ -372,17 +360,17 @@
                         {activeTab === 'convidadas' && (
                             <div className="space-y-6">
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                                    {[{ label: 'Convidadas', val: guests.length, color: settings.primaryColor, dark: true }, { label: 'Sim', val: guests.filter(g => g.rsvp === 'Confirmado').length, color: '#22c55e', dark: false }, { label: 'Em espera', val: guests.filter(g => g.rsvp === 'Pendente' || !g.rsvp).length, color: '#f59e0b', dark: false }, { label: 'Presentes', val: guests.filter(g => g.arrived).length, color: settings.primaryColor, dark: false }].map((card, i) => (<div key={i} className={`p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-md flex flex-col justify-center transition-all`} style={card.dark ? { backgroundColor: card.color, color: 'white' } : { backgroundColor: 'white' }}><p className={`text-[7px] md:text-[8px] font-black uppercase tracking-widest mb-1 ${card.dark ? 'opacity-60' : 'text-slate-300'}`}>{card.label}</p><p className={`text-xl md:text-2xl font-serif font-bold ${!card.dark ? 'text-slate-800' : ''}`} style={!card.dark && card.label === 'Presentes' ? { color: card.color } : {}}>{card.val}</p></div>))}
+                                    {[{ label: 'Convidadas', val: guests.length, color: settings.primaryColor, dark: true }, { label: 'Confirmadas', val: guests.filter(g => g.rsvp === 'Confirmado').length, color: '#22c55e', dark: false }, { label: 'Em espera', val: guests.filter(g => g.rsvp === 'Pendente' || !g.rsvp).length, color: '#f59e0b', dark: false }, { label: 'No Evento', val: guests.filter(g => g.arrived).length, color: settings.primaryColor, dark: false }].map((card, i) => (<div key={i} className={`p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-md flex flex-col justify-center transition-all`} style={card.dark ? { backgroundColor: card.color, color: 'white' } : { backgroundColor: 'white' }}><p className={`text-[7px] md:text-[8px] font-black uppercase tracking-widest mb-1 ${card.dark ? 'opacity-60' : 'text-slate-300'}`}>{card.label}</p><p className={`text-xl md:text-2xl font-serif font-bold ${!card.dark ? 'text-slate-800' : ''}`} style={!card.dark && card.label === 'No Evento' ? { color: card.color } : {}}>{card.val}</p></div>))}
                                 </div>
                                 <div className="bg-white rounded-2xl md:rounded-[2rem] shadow-lg border border-slate-50 overflow-hidden">
                                     <div className="p-4 md:p-6">
                                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
-                                            <div><h2 className="text-xl md:text-2xl font-serif font-bold text-slate-800 tracking-tight">{settings.labels?.convidadas || 'Convidadas'}</h2><p className="text-slate-400 text-[10px] font-medium italic tracking-wide">Gestão e presentes.</p></div>
-                                            <div className="flex gap-2 w-full lg:w-auto"><button onClick={() => setIsImportModalOpen(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-slate-50 text-slate-400 px-4 md:px-6 py-2.5 md:py-3.5 rounded-lg md:rounded-xl hover:bg-slate-100 transition-all font-black text-[8px] md:text-[9px] tracking-widest uppercase"><Icon name="ClipboardPaste" size={12} /> Importar</button><button onClick={() => handleAddItem('guests', { name: 'Nova Convidada', category: 'Amigos em Comum', rsvp: 'Pendente', arrived: false })} className="flex-1 lg:flex-none flex items-center justify-center gap-2 text-white px-4 md:px-6 py-2.5 md:py-3.5 rounded-lg md:rounded-xl transition-all font-black text-[8px] md:text-[9px] tracking-widest uppercase shadow-md shadow-pink-100 hover:scale-105" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" size={12} /> Nova</button></div>
+                                            <div className="text-left"><h2 className="text-xl md:text-2xl font-serif font-bold text-slate-800 tracking-tight">{settings.labels?.convidadas || 'Convidadas'}</h2><p className="text-slate-400 text-[10px] font-medium italic tracking-wide">RSVP e presentes numerados.</p></div>
+                                            <div className="flex gap-2 w-full lg:w-auto"><button onClick={() => setIsImportModalOpen(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-slate-50 text-slate-400 px-4 md:px-6 py-2.5 md:py-3.5 rounded-lg md:rounded-xl hover:bg-slate-100 font-black text-[8px] md:text-[9px] tracking-widest uppercase transition-all shadow-sm"><Icon name="ClipboardPaste" size={12} /> Importar</button><button onClick={() => handleAddItem('guests', { name: 'Nova Convidada', category: 'Amigos em Comum', rsvp: 'Pendente', arrived: false })} className="flex-1 lg:flex-none flex items-center justify-center gap-2 text-white px-4 md:px-6 py-2.5 md:py-3.5 rounded-lg md:rounded-xl transition-all font-black text-[8px] md:text-[9px] tracking-widest uppercase shadow-md shadow-pink-100 hover:scale-105" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" size={12} /> Adicionar</button></div>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6"><div className="relative group"><Icon name="Search" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-200 group-focus-within:text-pink-400" size={14} /><input type="text" placeholder="Nome..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-lg outline-none text-[11px] border-none shadow-inner" value={guestSearch} onChange={e => setGuestSearch(e.target.value)} /></div><div className="bg-slate-50 px-4 py-3 rounded-lg flex items-center gap-3 shadow-inner"><Icon name="Filter" className="text-slate-200" size={14} /><select className="bg-transparent border-none w-full outline-none text-[9px] text-slate-500 font-black tracking-widest uppercase cursor-pointer" value={guestFilter} onChange={e => setGuestFilter(e.target.value)}>{categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>
-                                        <div className="hidden md:grid grid-cols-12 gap-2 px-6 py-3 bg-slate-50/70 rounded-xl mb-4 text-[8px] font-black text-slate-300 uppercase tracking-widest"><div className="col-span-4">NOME / GRUPO</div><div className="col-span-2 text-center">RSVP</div><div className="col-span-3">Nº PRESENTE</div><div className="col-span-2 text-center">CHEGOU</div><div className="col-span-1 text-right">AÇÕES</div></div>
-                                        <div className="min-h-[300px] space-y-1">{filteredGuests.length > 0 ? filteredGuests.map(guest => (<EditableRow key={guest.id} item={guest} type="guest" onSave={d => handleUpdateItem('guests', guest.id, d)} onDelete={id => handleDeleteItem('guests', id)} />)) : (<div className="flex flex-col items-center justify-center py-20 text-slate-200 gap-3 opacity-50"><Icon name="Users" size={40} strokeWidth={1} /><p className="font-black uppercase tracking-[0.2em] text-[8px]">Vazio</p></div>)}</div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6"><div className="relative group"><Icon name="Search" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-200 group-focus-within:text-pink-400" size={14} /><input type="text" placeholder="Procurar..." className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-lg outline-none text-[11px] border-none shadow-inner" value={guestSearch} onChange={e => setGuestSearch(e.target.value)} /></div><div className="bg-slate-50 px-4 py-3 rounded-lg flex items-center gap-3 shadow-inner"><Icon name="Filter" className="text-slate-200" size={14} /><select className="bg-transparent border-none w-full outline-none text-[9px] text-slate-500 font-black tracking-widest uppercase cursor-pointer" value={guestFilter} onChange={e => setGuestFilter(e.target.value)}>{categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>
+                                        <div className="hidden md:grid grid-cols-12 gap-2 px-6 py-3 bg-slate-50/70 rounded-xl mb-4 text-[8px] font-black text-slate-300 uppercase tracking-widest"><div className="col-span-4 text-left">NOME / GRUPO</div><div className="col-span-2 text-center">RSVP</div><div className="col-span-3">Nº PRESENTE</div><div className="col-span-2 text-center">CHEGOU</div><div className="col-span-1 text-right">AÇÕES</div></div>
+                                        <div className="min-h-[300px] space-y-1">{filteredGuests.length > 0 ? filteredGuests.map(guest => (<EditableRow key={guest.id} item={guest} type="guest" onSave={d => handleUpdateItem('guests', guest.id, d)} onDelete={id => handleDeleteItem('guests', id)} />)) : (<div className="flex flex-col items-center justify-center py-20 text-slate-200 gap-3 opacity-50"><Icon name="Users" size={40} strokeWidth={1} /><p className="font-black uppercase tracking-[0.2em] text-[8px]">Sem Registos</p></div>)}</div>
                                     </div>
                                 </div>
                             </div>
@@ -390,7 +378,7 @@
 
                         {(activeTab === 'cronograma' || activeTab === 'cardapio') && (
                             <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 border border-slate-50 animate-pop">
-                                <div className="flex justify-between items-center mb-6 md:mb-8"><div className="flex items-center gap-3"><div className="p-2.5 rounded-xl bg-slate-50 text-slate-400 shadow-inner">{activeTab === 'cronograma' ? <Icon name="Calendar" size={20} /> : <Icon name="Utensils" size={20} />}</div><h2 className="text-xl md:text-2xl font-serif font-bold text-slate-800 capitalize tracking-tight">{settings.labels?.[activeTab] || activeTab}</h2></div><button onClick={() => { if(activeTab === 'cronograma') handleAddItem('schedule', { time: '00:00', activity: 'Descrição' }); if(activeTab === 'cardapio') handleAddItem('menu', { type: 'Comida', item: 'Item' }); }} className="text-white px-6 py-2.5 rounded-lg font-black text-[8px] md:text-[9px] tracking-widest uppercase shadow-md transition-all hover:scale-105" style={{ backgroundColor: settings.primaryColor }}>Adicionar</button></div>
+                                <div className="flex justify-between items-center mb-6 md:mb-8"><div className="flex items-center gap-3 text-slate-800"><div className="p-2.5 rounded-xl bg-slate-50 shadow-inner">{activeTab === 'cronograma' ? <Icon name="Calendar" size={20} /> : <Icon name="Utensils" size={20} />}</div><h2 className="text-xl md:text-2xl font-serif font-bold capitalize">{settings.labels?.[activeTab] || activeTab}</h2></div><button onClick={() => { if(activeTab === 'cronograma') handleAddItem('schedule', { time: '00:00', activity: 'Descrição' }); if(activeTab === 'cardapio') handleAddItem('menu', { type: 'Comida', item: 'Item' }); }} className="text-white px-6 py-2.5 rounded-lg font-black text-[8px] md:text-[9px] tracking-widest uppercase shadow-md transition-all hover:scale-105" style={{ backgroundColor: settings.primaryColor }}>Adicionar</button></div>
                                 <div className="space-y-2">{activeTab === 'cronograma' && schedule.sort((a,b) => (String(a.time || '')).localeCompare(String(b.time || ''))).map(item => <EditableRow key={item.id} item={item} onSave={d => handleUpdateItem('schedule', item.id, d)} onDelete={id => handleDeleteItem('schedule', id)} />)}{activeTab === 'cardapio' && menu.map(item => <EditableRow key={item.id} item={item} onSave={d => handleUpdateItem('menu', item.id, d)} onDelete={id => handleDeleteItem('menu', id)} />)}</div>
                             </div>
                         )}
@@ -400,12 +388,12 @@
                     {isImportModalOpen && (
                         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-lg flex items-center justify-center z-[200] p-4">
                             <div className="bg-white rounded-2xl md:rounded-[2rem] w-full max-w-lg p-6 md:p-8 shadow-2xl animate-pop border border-slate-50 relative my-auto">
-                                <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-400 rounded-full transition-all z-[210] shadow-sm"><Icon name="X" size={14} /></button>
+                                <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-400 rounded-full transition-all z-[210] shadow-sm transition-all"><Icon name="X" size={14} /></button>
                                 <h3 className="text-xl md:text-2xl font-serif font-bold mb-4 md:mb-6 text-slate-800 tracking-tight">Importar Lista</h3>
                                 <textarea className="w-full h-64 md:h-80 p-5 bg-slate-50 border-none rounded-xl font-sans text-xs outline-none resize-none shadow-inner placeholder:text-slate-300" placeholder={"Ana Maria - Família Noiva\nSofia Ramos - Amiga"} value={importText} onChange={e => setImportText(e.target.value)} />
                                 <div className="flex justify-end gap-3 mt-6">
-                                    <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} disabled={isImporting} className="px-5 py-2.5 text-slate-300 font-black text-[8px] uppercase tracking-widest">Cancelar</button>
-                                    <button onClick={handleBulkImport} disabled={isImporting} className="px-8 py-3 text-white rounded-lg font-black text-[8px] uppercase shadow-md disabled:opacity-50" style={{ backgroundColor: settings.primaryColor }}>{isImporting ? 'A PROCESSAR...' : 'IMPORTAR AGORA'}</button>
+                                    <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} disabled={isImporting} className="px-5 py-2.5 text-slate-300 font-black text-[8px] uppercase tracking-widest transition-all">Cancelar</button>
+                                    <button onClick={handleBulkImport} disabled={isImporting} className="px-8 py-3 text-white rounded-lg font-black text-[8px] uppercase shadow-md disabled:opacity-50 transition-all" style={{ backgroundColor: settings.primaryColor }}>{isImporting ? 'A PROCESSAR...' : 'IMPORTAR AGORA'}</button>
                                 </div>
                             </div>
                         </div>
