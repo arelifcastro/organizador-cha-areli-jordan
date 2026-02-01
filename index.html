@@ -13,9 +13,14 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, deleteDoc, writeBatch, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, collection, onSnapshot, addDoc, deleteDoc, writeBatch };
+        window.FirebaseSDK = { 
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, 
+            onAuthStateChanged, getFirestore, doc, setDoc, collection, 
+            onSnapshot, addDoc, deleteDoc, writeBatch, query
+        };
+        window.dispatchEvent(new Event('firebase-ready'));
     </script>
 
     <style>
@@ -31,10 +36,12 @@
         .upload-small { border: 2px dashed #e2e8f0; transition: all 0.2s; }
         .upload-small:hover { border-color: currentColor; background: rgba(255,255,255,0.8); }
         
-        /* Cores de RSVP no contorno lateral */
         .rsvp-pending { border-left: 6px solid #cbd5e1; }
         .rsvp-confirmed { border-left: 6px solid #10b981; }
         .rsvp-rejected { border-left: 6px solid #f43f5e; }
+        
+        .dash-card { transition: transform 0.3s ease; }
+        .dash-card:hover { transform: translateY(-4px); }
     </style>
 </head>
 <body class="text-slate-800">
@@ -42,7 +49,6 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, collection, onSnapshot, addDoc, deleteDoc, writeBatch } = window.FirebaseSDK;
 
         const CATEGORIES = ["Família Noiva", "Família Noivo", "Amigos Noiva", "Amigos Noivo", "Igreja", "Padrinhos Noiva", "Padrinhos Noivo", "Amigos Comum", "Outros"];
         const MENU_CATEGORIES = ["Entrada", "Coffee Break", "Sobremesa"];
@@ -64,7 +70,8 @@
                 Sparkles: <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></>,
                 ClipboardList: <><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></>,
                 Check: <><polyline points="20 6 9 17 4 12"/></>,
-                Clock: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>
+                Clock: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
+                Image: <><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></>
             };
             return (
                 <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -74,6 +81,7 @@
         };
 
         const App = () => {
+            const [sdk, setSdk] = useState(null);
             const [user, setUser] = useState(null);
             const [activeTab, setActiveTab] = useState('guests');
             const [loading, setLoading] = useState(true);
@@ -99,99 +107,80 @@
             const [editingGuest, setEditingGuest] = useState(null);
             const [selectedGuestView, setSelectedGuestView] = useState(null);
 
-            const firebaseConfig = typeof __firebase_config !== 'undefined' 
-                ? JSON.parse(__firebase_config) 
-                : { apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: "" };
-            
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'organizador-cha-areli-jordan';
 
             useEffect(() => {
-                const app = initializeApp(firebaseConfig);
-                const auth = getAuth(app);
-                const db = getFirestore(app);
+                const init = async () => {
+                    if (!window.FirebaseSDK || !firebaseConfig) {
+                        setTimeout(init, 100);
+                        return;
+                    }
+                    
+                    const firebase = window.FirebaseSDK;
+                    setSdk(firebase);
 
-                const timeout = setTimeout(() => setLoading(false), 8000);
+                    const app = firebase.initializeApp(firebaseConfig);
+                    const auth = firebase.getAuth(app);
+                    const db = firebase.getFirestore(app);
 
-                const initAuth = async () => {
                     try {
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
+                            await firebase.signInWithCustomToken(auth, __initial_auth_token);
                         } else {
-                            await signInAnonymously(auth);
+                            await firebase.signInAnonymously(auth);
                         }
-                    } catch (error) {
-                        console.error("Erro na autenticação:", error);
-                        setLoading(false);
+                    } catch (e) {
+                        console.error("Auth Error:", e);
                     }
+
+                    firebase.onAuthStateChanged(auth, (u) => {
+                        setUser(u);
+                        if (u) syncData(firebase, db);
+                    });
                 };
 
-                initAuth();
-                
-                const unsubAuth = onAuthStateChanged(auth, (u) => {
-                    setUser(u);
-                    if (u) {
-                        syncData(db, u.uid);
-                    } else {
-                        setTimeout(() => setLoading(false), 3000);
-                    }
-                });
-
-                return () => {
-                    clearTimeout(timeout);
-                    unsubAuth();
-                };
+                init();
             }, []);
 
-            const syncData = (db, uid) => {
+            const syncData = (firebase, db) => {
                 const basePath = ['artifacts', appId, 'public', 'data'];
                 
-                onSnapshot(doc(db, ...basePath, 'config', 'settings'), (d) => {
+                firebase.onSnapshot(firebase.doc(db, ...basePath, 'config', 'settings'), (d) => {
                     if (d.exists()) setSettings(prev => ({ ...prev, ...d.data() }));
                     setLoading(false);
-                }, (error) => {
-                    console.error("Erro ao carregar definições:", error);
-                    setLoading(false);
-                });
+                }, () => setLoading(false));
 
-                const colNames = ['guests', 'schedule', 'menu', 'favors'];
-                const setters = [setGuests, setSchedule, setMenu, setFavors];
-
-                colNames.forEach((name, idx) => {
-                    onSnapshot(collection(db, ...basePath, name), (snap) => {
-                        const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setters[idx](items);
-                    }, (error) => {
-                        console.error(`Erro ao carregar coleção ${name}:`, error);
+                const collections = { guests: setGuests, schedule: setSchedule, menu: setMenu, favors: setFavors };
+                Object.entries(collections).forEach(([name, setter]) => {
+                    firebase.onSnapshot(firebase.collection(db, ...basePath, name), (snap) => {
+                        setter(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                     });
                 });
             };
 
             const handleSave = async (col, data, id = null) => {
-                if (!user) return;
+                if (!user || !sdk) return;
                 try {
-                    const db = getFirestore();
-                    const colRef = collection(db, 'artifacts', appId, 'public', 'data', col);
+                    const db = sdk.getFirestore();
                     if (id) {
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', col, id), data, { merge: true });
+                        await sdk.setDoc(sdk.doc(db, 'artifacts', appId, 'public', 'data', col, id), data, { merge: true });
                     } else {
-                        await addDoc(colRef, { ...data, createdAt: Date.now() });
+                        await sdk.addDoc(sdk.collection(db, 'artifacts', appId, 'public', 'data', col), { ...data, createdAt: Date.now() });
                     }
-                } catch (e) { 
-                    console.error("Erro ao guardar:", e);
-                }
+                } catch (e) { console.error("Save Error:", e); }
             };
 
             const handleDelete = async (col, id) => {
-                if (!user || !confirm('Deseja eliminar este item?')) return;
-                await deleteDoc(doc(getFirestore(), 'artifacts', appId, 'public', 'data', col, id));
+                if (!user || !sdk || !confirm('Deseja eliminar este item?')) return;
+                await sdk.deleteDoc(sdk.doc(sdk.getFirestore(), 'artifacts', appId, 'public', 'data', col, id));
             };
 
             const handlePhotoUpload = (e, callback) => {
                 const file = e.target.files[0];
-                if (!file) return;
-                if (file.size > 2000000) { 
-                    alert("Imagem muito grande! O limite máximo é de 2MB."); 
-                    return; 
+                if (!file || file.size > 2000000) {
+                    if (file) alert("Ficheiro muito grande! O limite máximo é de 2MB.");
+                    return;
                 }
                 const reader = new FileReader();
                 reader.onloadend = () => callback(reader.result);
@@ -199,26 +188,22 @@
             };
 
             const handleBulkImport = async () => {
-                if (!importText.trim() || isImporting) return;
+                if (!importText.trim() || isImporting || !sdk) return;
                 setIsImporting(true);
                 const lines = importText.split('\n').filter(l => l.trim());
                 try {
-                    const db = getFirestore();
-                    const batch = writeBatch(db);
-                    const guestsColRef = collection(db, 'artifacts', appId, 'public', 'data', 'guests');
+                    const db = sdk.getFirestore();
+                    const batch = sdk.writeBatch(db);
+                    const colRef = sdk.collection(db, 'artifacts', appId, 'public', 'data', 'guests');
                     lines.forEach((line, i) => {
                         const parts = line.split(/[-–—]/);
-                        let name = parts[0]?.trim() || "Sem Nome";
+                        let name = parts[0]?.trim() || "Convidada";
                         let category = "Outros";
-                        if (parts.length >= 2 && parts[1]) {
-                            const catInput = parts[1].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-                            const matchedCat = CATEGORIES.find(c => 
-                                c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(catInput)
-                            );
-                            if (matchedCat) category = matchedCat;
+                        if (parts[1]) {
+                            const found = CATEGORIES.find(c => c.toLowerCase().includes(parts[1].trim().toLowerCase()));
+                            if (found) category = found;
                         }
-                        const newDocRef = doc(guestsColRef);
-                        batch.set(newDocRef, { 
+                        batch.set(sdk.doc(colRef), { 
                             name, 
                             category, 
                             rsvp: 'Pendente', 
@@ -231,13 +216,10 @@
                         });
                     });
                     await batch.commit();
-                } catch (err) {
-                    console.error("Erro na importação:", err);
-                } finally {
-                    setIsImporting(false);
                     setIsImportModalOpen(false);
                     setImportText('');
-                }
+                } catch (e) { console.error("Import Error:", e); }
+                setIsImporting(false);
             };
 
             const stats = useMemo(() => {
@@ -252,24 +234,19 @@
             }, [guests]);
 
             const filteredGuests = useMemo(() => {
-                return guests
-                    .filter(g => {
-                        const lowSearch = searchTerm.toLowerCase();
-                        const matchesName = g.name?.toLowerCase().includes(lowSearch);
-                        const matchesGiftId = g.giftId?.toString().toLowerCase().includes(lowSearch);
-                        const matchesCat = filterCategory === 'Todas' || g.category === filterCategory;
-                        const matchesPresence = presenceFilter === 'Todas' 
-                            || (presenceFilter === 'Pendentes' && !g.arrived)
-                            || (presenceFilter === 'Já chegou' && g.arrived);
-                        return (matchesName || matchesGiftId) && matchesCat && matchesPresence;
-                    })
-                    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+                return guests.filter(g => {
+                    const lowSearch = searchTerm.toLowerCase();
+                    const matchesSearch = g.name?.toLowerCase().includes(lowSearch) || g.giftId?.toString().includes(searchTerm);
+                    const matchesCat = filterCategory === 'Todas' || g.category === filterCategory;
+                    const matchesPres = presenceFilter === 'Todas' || (presenceFilter === 'Pendentes' && !g.arrived) || (presenceFilter === 'Já chegou' && g.arrived);
+                    return matchesSearch && matchesCat && matchesPres;
+                }).sort((a,b) => (a.name || "").localeCompare(b.name || ""));
             }, [guests, searchTerm, filterCategory, presenceFilter]);
 
             if (loading) return (
                 <div className="h-screen flex flex-col items-center justify-center bg-white gap-4">
                     <div className="w-12 h-12 border-4 border-slate-100 rounded-full animate-spin" style={{ borderTopColor: settings.primaryColor }}></div>
-                    <p className="text-xs font-bold text-slate-400 animate-pulse">A ligar ao servidor de Areli & Jordan...</p>
+                    <p className="text-xs font-bold text-slate-400">A carregar organizador...</p>
                 </div>
             );
 
@@ -353,8 +330,6 @@
                                                     </div>
                                                 </div>
                                                 
-                                                {/* Os botões rápidos foram removidos daqui conforme solicitado */}
-
                                                 <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-3xl border border-slate-100 mb-4">
                                                     <div className="w-14 h-14 rounded-xl bg-white overflow-hidden flex-shrink-0 flex items-center justify-center shadow-sm border border-slate-100">
                                                         {guest.giftPhoto ? <img src={guest.giftPhoto} className="w-full h-full object-cover" /> : <Icon name="Gift" size={20} style={{ color: settings.primaryColor + '40' }} />}
@@ -451,60 +426,44 @@
                         )}
 
                         {activeTab === 'settings' && (
-                            <div className="max-w-2xl mx-auto space-y-8 animate-in slide-in-from-bottom duration-500">
-                                <div className="bg-white p-10 rounded-[3rem] shadow-soft space-y-10">
-                                    <h2 className="text-2xl font-serif font-bold text-center">Identidade & Nomes</h2>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Título Site</label>
-                                            <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" value={settings.title} onChange={e => setSettings({...settings, title: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Subtítulo Site</label>
-                                            <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" value={settings.subtitle} onChange={e => setSettings({...settings, subtitle: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
-                                        </div>
+                            <div className="max-w-2xl mx-auto bg-white p-10 rounded-[3rem] shadow-soft space-y-10">
+                                <h2 className="text-2xl font-serif font-bold text-center">Definições do Evento</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Título</label>
+                                        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" value={settings.title} onChange={e => setSettings({...settings, title: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
                                     </div>
-                                    <div className="space-y-4">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2 block">Nomes das Abas</label>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                            {Object.keys(settings.labels).map(key => (
-                                                <div key={key} className="space-y-1">
-                                                    <label className="text-[8px] font-black text-slate-300 uppercase ml-1">{key}</label>
-                                                    <input className="w-full p-2.5 bg-slate-50 rounded-xl outline-none text-[11px] font-bold" value={settings.labels[key]} onChange={e => {
-                                                        const newLabels = {...settings.labels, [key]: e.target.value};
-                                                        setSettings({...settings, labels: newLabels});
-                                                    }} onBlur={() => handleSave('config', settings, 'settings')} />
-                                                </div>
-                                            ))}
-                                        </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Subtítulo</label>
+                                        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" value={settings.subtitle} onChange={e => setSettings({...settings, subtitle: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
                                     </div>
-                                    <div className="space-y-4">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2 block">Cores do Sistema</label>
-                                        <div className="grid grid-cols-3 gap-4">
-                                            {['primaryColor', 'secondaryColor', 'tertiaryColor'].map(c => (
-                                                <div key={c} className="space-y-1">
-                                                    <input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-xl cursor-pointer" value={settings[c]} onChange={e => setSettings({...settings, [c]: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
-                                                </div>
-                                            ))}
-                                        </div>
+                                </div>
+                                <div className="space-y-4">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase block">Cores do Sistema</label>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        {['primaryColor', 'secondaryColor', 'tertiaryColor'].map(c => (
+                                            <div key={c} className="space-y-1">
+                                                <input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-xl cursor-pointer" value={settings[c]} onChange={e => setSettings({...settings, [c]: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                         )}
                     </main>
 
-                    {/* MODAL DETALHES GUEST */}
+                    {/* Modal Detalhes Convidada */}
                     {selectedGuestView && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 detail-modal-bg animate-in fade-in duration-300">
-                            <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden relative animate-in zoom-in duration-300">
+                            <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden relative">
                                 <button onClick={() => setSelectedGuestView(null)} className="absolute top-6 right-6 z-10 p-3 bg-white/80 backdrop-blur rounded-full text-slate-400 shadow-lg hover:scale-110 transition-transform"><Icon name="X" /></button>
-                                <div className="grid grid-cols-1 md:grid-cols-5 h-full">
-                                    <div className="md:col-span-2 bg-slate-50 p-8 flex flex-col gap-6 items-center border-r border-slate-100">
+                                <div className="grid grid-cols-1 md:grid-cols-5">
+                                    <div className="md:col-span-2 bg-slate-50 p-8 flex flex-col gap-6 items-center">
                                         <div className="w-40 h-40 rounded-[2.5rem] bg-white shadow-xl overflow-hidden border-4 border-white">
                                             {selectedGuestView.photo ? <img src={selectedGuestView.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-100"><Icon name="User" size={60} /></div>}
                                         </div>
                                         <div className="w-full space-y-2">
-                                            <p className="text-[9px] font-black text-slate-300 uppercase text-center tracking-widest leading-none">Foto do Item</p>
+                                            <p className="text-[9px] font-black text-slate-300 uppercase text-center tracking-widest">Foto do Item</p>
                                             <div className="w-full aspect-square rounded-3xl bg-white shadow-lg overflow-hidden border-2 border-white">
                                                 {selectedGuestView.giftPhoto ? <img src={selectedGuestView.giftPhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-100"><Icon name="Gift" size={40} /></div>}
                                             </div>
@@ -512,99 +471,115 @@
                                     </div>
                                     <div className="md:col-span-3 p-10 flex flex-col">
                                         <span className="text-[10px] font-black uppercase tracking-[0.3em] mb-2" style={{ color: settings.secondaryColor }}>{selectedGuestView.category}</span>
-                                        <h2 className="text-3xl font-serif font-bold text-slate-800 mb-8 leading-tight">{selectedGuestView.name}</h2>
+                                        <h2 className="text-3xl font-serif font-bold text-slate-800 mb-6">{selectedGuestView.name}</h2>
                                         
-                                        {/* Agora mostramos apenas o estado do RSVP, a edição é feita nos "Ajustes" */}
-                                        <div className="space-y-1 mb-8">
-                                            <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none">ESTADO DO RSVP</p>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <div className={`w-3 h-3 rounded-full ${selectedGuestView.rsvp === 'Confirmado' ? 'bg-emerald-500' : selectedGuestView.rsvp === 'Recusado' ? 'bg-red-500' : 'bg-slate-300'}`}></div>
-                                                <p className="font-bold text-slate-700">{selectedGuestView.rsvp}</p>
-                                            </div>
-                                        </div>
-
                                         <div className="grid grid-cols-2 gap-6 mb-8">
                                             <div className="space-y-1">
-                                                <p className="text-[9px] font-black text-slate-300 uppercase">Estado Entrada</p>
-                                                <p className={`font-bold ${selectedGuestView.arrived ? 'text-emerald-500' : 'text-slate-400'}`}>{selectedGuestView.arrived ? 'Já chegou' : 'Aguardada'}</p>
+                                                <p className="text-[9px] font-black text-slate-300 uppercase">RSVP</p>
+                                                <p className="font-bold text-slate-600">{selectedGuestView.rsvp}</p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-black text-slate-300 uppercase">Entrada</p>
+                                                <p className={`font-bold ${selectedGuestView.arrived ? 'text-emerald-500' : 'text-slate-400'}`}>{selectedGuestView.arrived ? 'Confirmada' : 'Pendente'}</p>
                                             </div>
                                         </div>
 
-                                        <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex-1 relative">
+                                        <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex-1 relative mb-8">
                                             <div className="flex flex-col gap-2 mb-4">
-                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none">Presente Atribuído</span>
+                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Presente</span>
                                                 {selectedGuestView.giftId && (
-                                                    <span className="w-fit text-white px-3 py-1 rounded-lg text-xs font-black shadow-lg shadow-black/10" style={{ backgroundColor: settings.primaryColor }}>Nº {selectedGuestView.giftId}</span>
+                                                    <span className="w-fit text-white px-3 py-1 rounded-lg text-xs font-black" style={{ backgroundColor: settings.primaryColor }}>Nº {selectedGuestView.giftId}</span>
                                                 )}
                                             </div>
-                                            <p className="text-slate-700 font-medium leading-relaxed">{selectedGuestView.gift || 'Sem descrição inserida.'}</p>
+                                            <p className="text-slate-700 font-medium leading-relaxed">{selectedGuestView.gift || 'Sem presente atribuído.'}</p>
                                         </div>
                                         
-                                        <div className="mt-8 flex gap-3">
-                                            <button onClick={() => { handleSave('guests', { arrived: !selectedGuestView.arrived }, selectedGuestView.id); setSelectedGuestView(null); }} className={`flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg transition-all ${selectedGuestView.arrived ? 'bg-slate-100 text-slate-400' : 'text-white'}`} style={!selectedGuestView.arrived ? { backgroundColor: settings.secondaryColor } : {}}>
-                                                {selectedGuestView.arrived ? 'Já chegou' : 'Confirmar Entrada'}
-                                            </button>
-                                        </div>
+                                        <button onClick={() => { handleSave('guests', { arrived: !selectedGuestView.arrived }, selectedGuestView.id); setSelectedGuestView(null); }} className={`w-full py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg transition-all ${selectedGuestView.arrived ? 'bg-slate-100 text-slate-400' : 'text-white'}`} style={!selectedGuestView.arrived ? { backgroundColor: settings.secondaryColor } : {}}>
+                                            {selectedGuestView.arrived ? 'Cancelar Entrada' : 'Confirmar Entrada'}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* MODAL IMPORTAR */}
-                    {isImportModalOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
-                            <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 md:p-10 shadow-2xl animate-in zoom-in duration-300 my-auto">
-                                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-serif font-bold">Importação</h3><button onClick={() => setIsImportModalOpen(false)} className="p-2 text-slate-300"><Icon name="X" /></button></div>
-                                <div className="p-5 rounded-3xl mb-6 space-y-2 border" style={{ backgroundColor: settings.tertiaryColor, borderColor: settings.primaryColor + '20' }}>
-                                    <p className="text-[12px] font-semibold" style={{ color: settings.secondaryColor }}>Nome - Categoria (ex: Alessandra - Amigos Noiva)</p>
-                                </div>
-                                <textarea className="w-full h-72 p-5 bg-slate-50 rounded-2xl border-none outline-none text-sm resize-none mb-6 shadow-inner focus:ring-2 focus:ring-pink-100 transition-all font-medium" value={importText} onChange={e => setImportText(e.target.value)} disabled={isImporting} />
-                                <div className="flex gap-3">
-                                    <button onClick={() => setIsImportModalOpen(false)} disabled={isImporting} className="flex-1 py-4 text-slate-400 font-bold uppercase tracking-widest text-[10px]">Cancelar</button>
-                                    <button onClick={handleBulkImport} disabled={isImporting} className="flex-[2] py-4 text-white rounded-2xl font-bold uppercase tracking-widest shadow-lg flex items-center justify-center gap-2" style={{ backgroundColor: settings.primaryColor }}>
-                                        {isImporting ? "A processar..." : "Processar Lista"}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* MODAL EDIÇÃO GUEST (Ajustes) */}
+                    {/* Modal Edição/Ajustes Convidada */}
                     {editingGuest && (
                         <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
-                            <div className="bg-white w-full max-w-xl rounded-[3rem] p-8 shadow-2xl animate-in zoom-in duration-300 my-auto">
-                                <div className="flex justify-between items-center mb-8"><h3 className="text-xl font-serif font-bold">{editingGuest.id ? 'Ficha de Cadastro' : 'Novo Registo'}</h3><button onClick={() => setEditingGuest(null)} className="p-2 text-slate-300"><Icon name="X" /></button></div>
+                            <div className="bg-white w-full max-w-xl rounded-[3rem] p-8 shadow-2xl my-auto animate-in zoom-in duration-300">
+                                <div className="flex justify-between items-center mb-8">
+                                    <h3 className="text-xl font-serif font-bold">Ajustes da Convidada</h3>
+                                    <button onClick={() => setEditingGuest(null)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors"><Icon name="X" /></button>
+                                </div>
                                 <div className="space-y-6">
                                     <div className="grid grid-cols-2 gap-6">
-                                        <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Foto Perfil</label>
-                                        <label className="relative flex flex-col items-center justify-center h-32 w-full rounded-3xl cursor-pointer overflow-hidden bg-slate-50 border-2 border-dashed border-slate-200 hover:border-pink-300 transition-colors">
-                                            {editingGuest.photo ? <img src={editingGuest.photo} className="w-full h-full object-cover" /> : <div className="flex flex-col items-center text-slate-300"><Icon name="Camera" size={24} /><span className="text-[10px] mt-1 font-bold tracking-widest">UPLOAD</span></div>}
-                                            <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(e, (p) => setEditingGuest({...editingGuest, photo: p}))} />
-                                        </label></div>
-                                        <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Foto Item</label>
-                                        <label className="relative flex flex-col items-center justify-center h-32 w-full rounded-3xl cursor-pointer overflow-hidden bg-slate-50 border-2 border-dashed border-slate-200 hover:border-pink-300 transition-colors">
-                                            {editingGuest.giftPhoto ? <img src={editingGuest.giftPhoto} className="w-full h-full object-cover" /> : <div className="flex flex-col items-center text-slate-300"><Icon name="Gift" size={24} /><span className="text-[10px] mt-1 font-bold tracking-widest">UPLOAD</span></div>}
-                                            <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(e, (p) => setEditingGuest({...editingGuest, giftPhoto: p}))} />
-                                        </label></div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Foto Perfil</label>
+                                            <label className="relative flex flex-col items-center justify-center h-32 w-full rounded-3xl cursor-pointer overflow-hidden bg-slate-50 border-2 border-dashed border-slate-200">
+                                                {editingGuest.photo ? <img src={editingGuest.photo} className="w-full h-full object-cover" /> : <Icon name="Camera" className="text-slate-300" />}
+                                                <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(e, (p) => setEditingGuest({...editingGuest, photo: p}))} />
+                                            </label>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Foto Item</label>
+                                            <label className="relative flex flex-col items-center justify-center h-32 w-full rounded-3xl cursor-pointer overflow-hidden bg-slate-50 border-2 border-dashed border-slate-200">
+                                                {editingGuest.giftPhoto ? <img src={editingGuest.giftPhoto} className="w-full h-full object-cover" /> : <Icon name="Gift" className="text-slate-300" />}
+                                                <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(e, (p) => setEditingGuest({...editingGuest, giftPhoto: p}))} />
+                                            </label>
+                                        </div>
                                     </div>
                                     <div className="space-y-4">
-                                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nome</label><input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.name} onChange={e => setEditingGuest({...editingGuest, name: e.target.value})} /></div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nome Completo</label>
+                                            <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.name} onChange={e => setEditingGuest({...editingGuest, name: e.target.value})} />
+                                        </div>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Categoria</label><select className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.category} onChange={e => setEditingGuest({...editingGuest, category: e.target.value})}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                                            
-                                            {/* Aqui é onde o RSVP deve ser editado agora */}
-                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Estado do RSVP</label><select className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.rsvp} onChange={e => setEditingGuest({...editingGuest, rsvp: e.target.value})}>
-                                                {RSVP_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
-                                            </select></div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Categoria</label>
+                                                <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.category} onChange={e => setEditingGuest({...editingGuest, category: e.target.value})}>
+                                                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">RSVP (Estado)</label>
+                                                <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.rsvp} onChange={e => setEditingGuest({...editingGuest, rsvp: e.target.value})}>
+                                                    {RSVP_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+                                                </select>
+                                            </div>
                                         </div>
                                         <div className="grid grid-cols-4 gap-4">
-                                            <div className="col-span-1 space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nº Item</label><input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-black text-center" value={editingGuest.giftId} onChange={e => setEditingGuest({...editingGuest, giftId: e.target.value})} /></div>
-                                            <div className="col-span-3 space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Descrição Presente</label><input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-medium" value={editingGuest.gift} onChange={e => setEditingGuest({...editingGuest, gift: e.target.value})} /></div>
+                                            <div className="col-span-1 space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nº Presente</label>
+                                                <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-black text-center" value={editingGuest.giftId} onChange={e => setEditingGuest({...editingGuest, giftId: e.target.value})} />
+                                            </div>
+                                            <div className="col-span-3 space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Descrição Presente</label>
+                                                <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-medium" value={editingGuest.gift} onChange={e => setEditingGuest({...editingGuest, gift: e.target.value})} />
+                                            </div>
                                         </div>
                                     </div>
+                                    <div className="flex gap-4 pt-4">
+                                        <button onClick={() => handleDelete('guests', editingGuest.id)} className="flex-1 py-4 text-red-400 font-bold text-xs uppercase border border-red-100 rounded-2xl hover:bg-red-50 transition-colors">Eliminar</button>
+                                        <button onClick={() => { handleSave('guests', editingGuest, editingGuest.id); setEditingGuest(null); }} className="flex-[2] py-4 text-white rounded-2xl font-bold uppercase text-xs shadow-lg hover:opacity-90 transition-opacity" style={{ backgroundColor: settings.primaryColor }}>Salvar Ajustes</button>
+                                    </div>
                                 </div>
-                                <button onClick={() => { handleSave('guests', editingGuest, editingGuest.id); setEditingGuest(null); }} className="w-full py-4 mt-8 text-white rounded-2xl font-bold uppercase tracking-widest shadow-lg" style={{ backgroundColor: settings.primaryColor }}>Salvar Cadastro</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal Importação */}
+                    {isImportModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
+                            <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
+                                <h3 className="text-xl font-serif font-bold mb-4">Importação de Lista</h3>
+                                <p className="text-[11px] text-slate-400 mb-4 bg-slate-50 p-3 rounded-xl">Formato: <strong>Nome - Categoria</strong> (ex: Alessandra - Amigos Noiva). Use uma linha para cada convidada.</p>
+                                <textarea className="w-full h-64 p-5 bg-slate-50 rounded-2xl outline-none text-sm resize-none mb-6 font-medium focus:ring-2 focus:ring-pink-100 transition-all" value={importText} onChange={e => setImportText(e.target.value)} disabled={isImporting} />
+                                <div className="flex gap-4">
+                                    <button onClick={() => setIsImportModalOpen(false)} className="flex-1 py-4 text-slate-400 font-bold uppercase text-xs" disabled={isImporting}>Cancelar</button>
+                                    <button onClick={handleBulkImport} className="flex-[2] py-4 text-white rounded-2xl font-bold uppercase text-xs shadow-lg" style={{ backgroundColor: settings.primaryColor }} disabled={isImporting}>
+                                        {isImporting ? "A processar convidadas..." : "Confirmar Importação"}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
