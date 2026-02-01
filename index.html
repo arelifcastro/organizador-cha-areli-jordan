@@ -16,11 +16,10 @@
         import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, deleteDoc, writeBatch, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         window.FirebaseSDK = { 
-            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, 
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken,
             onAuthStateChanged, getFirestore, doc, setDoc, collection, 
             onSnapshot, addDoc, deleteDoc, writeBatch, query
         };
-        window.dispatchEvent(new Event('firebase-ready'));
     </script>
 
     <style>
@@ -107,55 +106,71 @@
             const [editingGuest, setEditingGuest] = useState(null);
             const [selectedGuestView, setSelectedGuestView] = useState(null);
 
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+            // Variáveis de ambiente injetadas
+            const firebaseConfig = typeof __firebase_config !== 'undefined' 
+                ? JSON.parse(__firebase_config) 
+                : { apiKey: "" }; // Fallback
+            
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'organizador-cha-areli-jordan';
 
             useEffect(() => {
                 const init = async () => {
-                    if (!window.FirebaseSDK || !firebaseConfig) {
-                        setTimeout(init, 100);
+                    if (!window.FirebaseSDK) {
+                        setTimeout(init, 200);
                         return;
                     }
                     
                     const firebase = window.FirebaseSDK;
                     setSdk(firebase);
 
-                    const app = firebase.initializeApp(firebaseConfig);
-                    const auth = firebase.getAuth(app);
-                    const db = firebase.getFirestore(app);
-
                     try {
+                        const app = firebase.initializeApp(firebaseConfig);
+                        const auth = firebase.getAuth(app);
+                        const db = firebase.getFirestore(app);
+
+                        // Fluxo de Autenticação Obrigatório
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await firebase.signInWithCustomToken(auth, __initial_auth_token);
                         } else {
                             await firebase.signInAnonymously(auth);
                         }
-                    } catch (e) {
-                        console.error("Auth Error:", e);
-                    }
 
-                    firebase.onAuthStateChanged(auth, (u) => {
-                        setUser(u);
-                        if (u) syncData(firebase, db);
-                    });
+                        firebase.onAuthStateChanged(auth, (u) => {
+                            setUser(u);
+                            if (u) {
+                                syncData(firebase, db);
+                            } else {
+                                setLoading(false);
+                            }
+                        });
+                    } catch (e) {
+                        console.error("Erro na inicialização:", e);
+                        setLoading(false);
+                    }
                 };
 
                 init();
             }, []);
 
             const syncData = (firebase, db) => {
+                // RULE 1: Strict Paths
                 const basePath = ['artifacts', appId, 'public', 'data'];
                 
+                // Configurações
                 firebase.onSnapshot(firebase.doc(db, ...basePath, 'config', 'settings'), (d) => {
                     if (d.exists()) setSettings(prev => ({ ...prev, ...d.data() }));
                     setLoading(false);
-                }, () => setLoading(false));
+                }, (err) => {
+                    console.error("Config Snapshot Error:", err);
+                    setLoading(false);
+                });
 
+                // Coleções
                 const collections = { guests: setGuests, schedule: setSchedule, menu: setMenu, favors: setFavors };
                 Object.entries(collections).forEach(([name, setter]) => {
                     firebase.onSnapshot(firebase.collection(db, ...basePath, name), (snap) => {
                         setter(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                    });
+                    }, (err) => console.error(`Error loading ${name}:`, err));
                 });
             };
 
@@ -163,10 +178,11 @@
                 if (!user || !sdk) return;
                 try {
                     const db = sdk.getFirestore();
+                    const path = ['artifacts', appId, 'public', 'data', col];
                     if (id) {
-                        await sdk.setDoc(sdk.doc(db, 'artifacts', appId, 'public', 'data', col, id), data, { merge: true });
+                        await sdk.setDoc(sdk.doc(db, ...path, id), data, { merge: true });
                     } else {
-                        await sdk.addDoc(sdk.collection(db, 'artifacts', appId, 'public', 'data', col), { ...data, createdAt: Date.now() });
+                        await sdk.addDoc(sdk.collection(db, ...path), { ...data, createdAt: Date.now() });
                     }
                 } catch (e) { console.error("Save Error:", e); }
             };
@@ -178,8 +194,9 @@
 
             const handlePhotoUpload = (e, callback) => {
                 const file = e.target.files[0];
-                if (!file || file.size > 2000000) {
-                    if (file) alert("Ficheiro muito grande! O limite máximo é de 2MB.");
+                if (!file) return;
+                if (file.size > 2000000) {
+                    alert("Ficheiro muito grande! O limite máximo é de 2MB.");
                     return;
                 }
                 const reader = new FileReader();
@@ -246,7 +263,7 @@
             if (loading) return (
                 <div className="h-screen flex flex-col items-center justify-center bg-white gap-4">
                     <div className="w-12 h-12 border-4 border-slate-100 rounded-full animate-spin" style={{ borderTopColor: settings.primaryColor }}></div>
-                    <p className="text-xs font-bold text-slate-400">A carregar organizador...</p>
+                    <p className="text-xs font-bold text-slate-400 animate-pulse">A ligar ao servidor de Areli & Jordan...</p>
                 </div>
             );
 
@@ -259,7 +276,7 @@
                         </div>
                         <nav className="flex gap-1 overflow-x-auto max-w-full pb-2 md:pb-0 no-scrollbar items-center">
                             {['guests', 'schedule', 'menu', 'favors', 'settings'].map((key) => {
-                                const label = settings.labels[key];
+                                const label = settings.labels[key] || key;
                                 return (
                                     <button 
                                         key={key} 
@@ -325,8 +342,8 @@
                                                         <p className="text-[10px] font-black uppercase tracking-widest mt-1" style={{ color: settings.secondaryColor }}>{guest.category}</p>
                                                     </div>
                                                     <div className="flex flex-col gap-1">
-                                                        <button onClick={(e) => { e.stopPropagation(); setEditingGuest(guest); }} className="p-2 text-slate-300 hover:text-slate-600"><Icon name="Settings" size={14} /></button>
-                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete('guests', guest.id); }} className="p-2 text-slate-200 hover:text-red-400"><Icon name="Trash" size={14} /></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); setEditingGuest(guest); }} className="p-2 text-slate-300 hover:text-slate-600 transition-colors"><Icon name="Settings" size={14} /></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete('guests', guest.id); }} className="p-2 text-slate-200 hover:text-red-400 transition-colors"><Icon name="Trash" size={14} /></button>
                                                     </div>
                                                 </div>
                                                 
@@ -457,7 +474,7 @@
                         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 detail-modal-bg animate-in fade-in duration-300">
                             <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden relative">
                                 <button onClick={() => setSelectedGuestView(null)} className="absolute top-6 right-6 z-10 p-3 bg-white/80 backdrop-blur rounded-full text-slate-400 shadow-lg hover:scale-110 transition-transform"><Icon name="X" /></button>
-                                <div className="grid grid-cols-1 md:grid-cols-5">
+                                <div className="grid grid-cols-1 md:grid-cols-5 h-full">
                                     <div className="md:col-span-2 bg-slate-50 p-8 flex flex-col gap-6 items-center">
                                         <div className="w-40 h-40 rounded-[2.5rem] bg-white shadow-xl overflow-hidden border-4 border-white">
                                             {selectedGuestView.photo ? <img src={selectedGuestView.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-100"><Icon name="User" size={60} /></div>}
@@ -471,7 +488,7 @@
                                     </div>
                                     <div className="md:col-span-3 p-10 flex flex-col">
                                         <span className="text-[10px] font-black uppercase tracking-[0.3em] mb-2" style={{ color: settings.secondaryColor }}>{selectedGuestView.category}</span>
-                                        <h2 className="text-3xl font-serif font-bold text-slate-800 mb-6">{selectedGuestView.name}</h2>
+                                        <h2 className="text-3xl font-serif font-bold text-slate-800 mb-6 leading-tight">{selectedGuestView.name}</h2>
                                         
                                         <div className="grid grid-cols-2 gap-6 mb-8">
                                             <div className="space-y-1">
@@ -486,9 +503,9 @@
 
                                         <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex-1 relative mb-8">
                                             <div className="flex flex-col gap-2 mb-4">
-                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Presente</span>
+                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none">Presente</span>
                                                 {selectedGuestView.giftId && (
-                                                    <span className="w-fit text-white px-3 py-1 rounded-lg text-xs font-black" style={{ backgroundColor: settings.primaryColor }}>Nº {selectedGuestView.giftId}</span>
+                                                    <span className="w-fit text-white px-3 py-1 rounded-lg text-xs font-black shadow-lg" style={{ backgroundColor: settings.primaryColor }}>Nº {selectedGuestView.giftId}</span>
                                                 )}
                                             </div>
                                             <p className="text-slate-700 font-medium leading-relaxed">{selectedGuestView.gift || 'Sem presente atribuído.'}</p>
@@ -503,7 +520,7 @@
                         </div>
                     )}
 
-                    {/* Modal Edição/Ajustes Convidada */}
+                    {/* Modal Ajustes Convidada */}
                     {editingGuest && (
                         <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
                             <div className="bg-white w-full max-w-xl rounded-[3rem] p-8 shadow-2xl my-auto animate-in zoom-in duration-300">
