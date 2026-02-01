@@ -3,369 +3,506 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Organizador de Chá de Cozinha</title>
-    <!-- Tailwind CSS -->
+    <title>Chá de Cozinha Pro - Gestão Total</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Firebase SDK (Compat) -->
-    <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore-compat.js"></script>
+    
+    <!-- Firebase SDK Modular -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Adicionado writeBatch ao SDK global para suportar importação em massa
+        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch };
+    </script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
         
-        body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            transition: background-color 0.5s ease;
-        }
-        .font-serif {
-            font-family: 'Playfair Display', serif;
-        }
-        .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-        }
-        .animate-pop {
-            animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        @keyframes pop {
-            0% { transform: scale(0.8); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-        input[type="color"]::-webkit-color-swatch { border: none; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; transition: background-color 0.3s ease; }
+        .font-serif { font-family: 'Playfair Display', serif; }
         
-        input, select, textarea {
-            font-size: 16px !important;
+        .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        .shadow-soft { box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04); }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .detail-modal-bg { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(8px); }
+        
+        .transition-colors-custom { transition: color 0.3s, background-color 0.3s, border-color 0.3s; }
+        .dash-card { transition: transform 0.3s ease; }
+        .dash-card:hover { transform: translateY(-4px); }
+
+        .upload-small {
+            border: 2px dashed #e2e8f0;
+            transition: all 0.2s;
+        }
+        .upload-small:hover {
+            border-color: currentColor;
+            background: rgba(255,255,255,0.8);
         }
     </style>
 </head>
-<body class="bg-slate-50">
+<body class="text-slate-800">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
+        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch } = window.FirebaseSDK;
 
-        // --- Componente de Ícones Inline SVG para Estabilidade ---
-        const Icon = ({ name, size = 20, className = "", style = {} }) => {
+        const CATEGORIES = ["Família Noiva", "Família Noivo", "Amigos Noiva", "Amigos Noivo", "Igreja", "Padrinhos Noiva", "Padrinhos Noivo", "Amigos Comum", "Outros"];
+        const MENU_CATEGORIES = ["Entrada", "Coffee Break", "Sobremesa"];
+
+        const Icon = ({ name, size = 20, className = "" }) => {
             const icons = {
                 Users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
-                Calendar: <><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></>,
-                Utensils: <><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></>,
                 Settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2a2 2 0 0 1-2 2a2 2 0 0 0-2 2a2 2 0 0 1-2 2a2 2 0 0 0-2 2v.44a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2a2 2 0 0 1 2-2a2 2 0 0 0 2-2a2 2 0 0 1 2-2a2 2 0 0 0 2-2v-.44a2 2 0 0 0-2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2ZM9 12a3 3 0 1 0 6 0a3 3 0 0 0-6 0Z"/></>,
                 Plus: <><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></>,
-                Trash2: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></>,
-                Edit2: <><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></>,
-                Check: <><polyline points="20 6 9 17 4 12"/></>,
+                Trash: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></>,
+                Camera: <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></>,
                 X: <><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></>,
-                ClipboardPaste: <><path d="M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1Z"/><path d="M8 4H6a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><path d="M9 12h6"/><path d="M9 16h6"/></>,
-                Filter: <><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></>,
-                Search: <><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></>,
-                Package: <><path d="M16.5 9.4 7.5 4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.27 6.96 8.73 5.05 8.73-5.05"/><path d="M12 22.08V12"/></>,
-                User: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
-                CheckCircle2: <><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></>,
                 Gift: <><polyline points="20 12 20 22 4 22 4 12"/><rect width="20" height="5" x="2" y="7"/><line x1="12" x2="12" y1="22" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></>,
-                Hash: <><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></>,
-                Upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></>,
-                Palette: <><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.5 2-1.3.3.1.6.3 1 .3 2.2 0 4-1.8 4-4 0-.9-.3-1.7-.8-2.4.5-.7.8-1.5.8-2.4 0-4.4-3.6-8-8-8z"/></>
+                Search: <><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></>,
+                User: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
+                Calendar: <><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></>,
+                Coffee: <><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" x2="6" y1="2" y2="4"/><line x1="10" x2="10" y1="2" y2="4"/><line x1="14" x2="14" y1="2" y2="4"/></>,
+                Sparkles: <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></>,
+                ClipboardList: <><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></>,
+                Image: <><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></>
             };
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
                     {icons[name] || null}
                 </svg>
             );
         };
 
-        // --- Firebase Configuração Protegida ---
-        const config = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "AIzaSyAlX_NwqaeMmYjpNgp5rkpUq49h1UrndAs",
-            authDomain: "organizador-cha-areli-jordan.firebaseapp.com",
-            projectId: "organizador-cha-areli-jordan",
-            storageBucket: "organizador-cha-areli-jordan.firebasestorage.app",
-            messagingSenderId: "891657080136",
-            appId: "1:891657080136:web:4ca9dd4794de3300d2777d"
-        };
-
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'organizador-cha-v1';
-
-        if (!firebase.apps.length) {
-            firebase.initializeApp(config);
-        }
-
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-
         const App = () => {
             const [user, setUser] = useState(null);
-            const [activeTab, setActiveTab] = useState('convidadas');
-            const [selectedGuest, setSelectedGuest] = useState(null);
+            const [activeTab, setActiveTab] = useState('guests');
             const [loading, setLoading] = useState(true);
-            const [isImporting, setIsImporting] = useState(false);
-            
-            const [settings, setSettings] = useState({ 
-                title: 'Meu Chá de Cozinha', 
-                primaryColor: '#ec4899', 
-                primaryLight: '#fdf2f4',
-                labels: { convidadas: 'Lista', cronograma: 'Horários', cardapio: 'Menu', configuracoes: 'Estilo' }
-            });
-            
             const [guests, setGuests] = useState([]);
             const [schedule, setSchedule] = useState([]);
             const [menu, setMenu] = useState([]);
-            const [guestFilter, setGuestFilter] = useState('Todas');
-            const [guestSearch, setGuestSearch] = useState('');
+            const [favors, setFavors] = useState([]);
+            const [settings, setSettings] = useState({
+                title: 'O Nosso Chá de Cozinha',
+                subtitle: 'Cerimonial de Luxo',
+                primaryColor: '#ec4899',
+                secondaryColor: '#db2777',
+                tertiaryColor: '#fdf2f8',
+                labels: { guests: 'Lista', schedule: 'Cronograma', menu: 'Menu', favors: 'Lembranças', settings: 'Ajustes' }
+            });
+
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterCategory, setFilterCategory] = useState('Todas');
+            const [presenceFilter, setPresenceFilter] = useState('Todas');
             const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+            const [isImporting, setIsImporting] = useState(false);
             const [importText, setImportText] = useState('');
+            const [editingGuest, setEditingGuest] = useState(null);
+            const [selectedGuestView, setSelectedGuestView] = useState(null);
 
-            const categories = ['Todas', 'Família Noiva', 'Família Noivo', 'Amigos em Comum', 'Amigos Noiva', 'Amigos Noivo'];
-            const rsvpStatus = ['Pendente', 'Confirmado', 'Recusado'];
+            const firebaseConfig = {
+                apiKey: "AIzaSyAlX_NwqaeMmYjpNgp5rkpUq49h1UrndAs",
+                authDomain: "organizador-cha-areli-jordan.firebaseapp.com",
+                projectId: "organizador-cha-areli-jordan",
+                storageBucket: "organizador-cha-areli-jordan.firebasestorage.app",
+                messagingSenderId: "891657080136",
+                appId: "1:891657080136:web:511b95ccf9bfef28d2777d"
+            };
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-cha-app';
 
-            // Regra 3: Auth Before Queries - Garantir que o login anónimo ocorra primeiro
             useEffect(() => {
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                const db = getFirestore(app);
+
+                const timeout = setTimeout(() => {
+                    setLoading(false);
+                }, 7000);
+
                 const initAuth = async () => {
                     try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await auth.signInWithCustomToken(__initial_auth_token).catch(() => auth.signInAnonymously());
-                        } else {
-                            await auth.signInAnonymously();
-                        }
-                    } catch (e) {
-                        console.error("Erro auth:", e);
+                        await signInAnonymously(auth);
+                    } catch (error) {
+                        console.error("Erro na autenticação:", error);
+                        setLoading(false);
                     }
                 };
+
                 initAuth();
-                const unsubscribe = auth.onAuthStateChanged(setUser);
-                return () => unsubscribe();
+                
+                const unsubAuth = onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    if (u) {
+                        syncData(db, u.uid);
+                    } else {
+                        setTimeout(() => setLoading(false), 3000);
+                    }
+                });
+
+                return () => {
+                    clearTimeout(timeout);
+                    unsubAuth();
+                };
             }, []);
 
-            // Regra 1: Strict Paths - Caminho unificado para evitar erro de salvamento
-            const getBaseRef = () => db.collection('artifacts').doc(appId).collection('public').doc('data');
+            const syncData = (db, uid) => {
+                const basePath = ['artifacts', appId, 'public', 'data'];
+                
+                onSnapshot(doc(db, ...basePath, 'config', 'settings'), (d) => {
+                    if (d.exists()) setSettings(prev => ({ ...prev, ...d.data() }));
+                    setLoading(false);
+                }, (error) => {
+                    console.error("Erro ao carregar definições:", error);
+                    setLoading(false);
+                });
 
-            useEffect(() => {
+                const colNames = ['guests', 'schedule', 'menu', 'favors'];
+                const setters = [setGuests, setSchedule, setMenu, setFavors];
+
+                colNames.forEach((name, idx) => {
+                    onSnapshot(collection(db, ...basePath, name), (snap) => {
+                        const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        setters[idx](items);
+                    }, (error) => {
+                        console.error(`Erro ao carregar coleção ${name}:`, error);
+                    });
+                });
+            };
+
+            const handleSave = async (col, data, id = null) => {
                 if (!user) return;
-                const baseRef = getBaseRef();
-
-                const unsubSettings = baseRef.collection('config').doc('settings').onSnapshot(doc => {
-                    if (doc.exists) {
-                        const data = doc.data();
-                        if (!data.labels) data.labels = { convidadas: 'Lista', cronograma: 'Horários', cardapio: 'Menu', configuracoes: 'Estilo' };
-                        setSettings(data);
+                try {
+                    const db = getFirestore();
+                    if (id) {
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', col, id), data, { merge: true });
+                    } else {
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', col), { ...data, createdAt: Date.now() });
                     }
-                    setLoading(false);
-                }, (err) => {
-                    console.error("Erro settings:", err);
-                    setLoading(false);
-                });
+                } catch (e) { 
+                    console.error("Erro ao guardar:", e);
+                }
+            };
 
-                const unsubGuests = baseRef.collection('guests').onSnapshot(snap => {
-                    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                    setGuests(data);
-                });
+            const handleDelete = async (col, id) => {
+                if (!user || !confirm('Deseja eliminar este item?')) return;
+                await deleteDoc(doc(getFirestore(), 'artifacts', appId, 'public', 'data', col, id));
+            };
 
-                const unsubSchedule = baseRef.collection('schedule').onSnapshot(snap => setSchedule(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-                const unsubMenu = baseRef.collection('menu').onSnapshot(snap => setMenu(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-
-                return () => { unsubSettings(); unsubGuests(); unsubSchedule(); unsubMenu(); };
-            }, [user]);
-
-            // CRUD Protegido
-            const handleSaveSettings = (s) => user && getBaseRef().collection('config').doc('settings').set(s);
-            const handleAddItem = (col, item) => user && getBaseRef().collection(col).add({ ...item, createdAt: Date.now() });
-            const handleUpdateItem = (col, id, data) => user && getBaseRef().collection(col).doc(id).update(data);
-            const handleDeleteItem = (col, id) => user && getBaseRef().collection(col).doc(id).delete();
+            const handlePhotoUpload = (e, callback) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 400000) { alert("Imagem muito grande! Máximo 400KB."); return; }
+                const reader = new FileReader();
+                reader.onloadend = () => callback(reader.result);
+                reader.readAsDataURL(file);
+            };
 
             const handleBulkImport = async () => {
-                if (!importText.trim() || isImporting || !user) return;
+                if (!importText.trim() || isImporting) return;
+                
                 setIsImporting(true);
-                const lines = importText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+                const lines = importText.split('\n').filter(l => l.trim());
+                
                 try {
-                    const batch = db.batch();
-                    const colRef = getBaseRef().collection('guests');
-                    const now = Date.now();
+                    const db = getFirestore();
+                    const batch = writeBatch(db);
+                    const guestsColRef = collection(db, 'artifacts', appId, 'public', 'data', 'guests');
+                    
                     lines.forEach((line, i) => {
-                        const match = line.match(/^(.+?)\s*[-–—]\s*(.+)$/);
-                        const name = match ? match[1].trim() : line;
-                        const category = match ? match[2].trim() : 'Não Definido';
-                        const ref = colRef.doc();
-                        batch.set(ref, {
-                            name, category, photo: '', giftText: '', giftPhoto: '', giftNumber: '',
-                            rsvp: 'Pendente', arrived: false, createdAt: now - (i * 10)
+                        const parts = line.split(/[-–—]/);
+                        let name = parts[0]?.trim() || "Sem Nome";
+                        let category = "Outros";
+                        
+                        if (parts.length >= 2 && parts[1]) {
+                            const catInput = parts[1].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+                            const matchedCat = CATEGORIES.find(c => 
+                                c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(catInput)
+                            );
+                            if (matchedCat) category = matchedCat;
+                        }
+                        
+                        // Cria uma referência de documento com ID aleatório para cada convidada
+                        const newDocRef = doc(guestsColRef);
+                        
+                        batch.set(newDocRef, { 
+                            name, 
+                            category, 
+                            rsvp: 'Pendente', 
+                            arrived: false, 
+                            gift: '', 
+                            giftId: '', 
+                            photo: '', 
+                            giftPhoto: '',
+                            createdAt: Date.now() + i 
                         });
                     });
+                    
+                    // Envia todas as gravações de uma só vez (Atomicidade)
                     await batch.commit();
-                    setImportText('');
-                    setIsImportModalOpen(false);
-                } catch (error) {
-                    console.error("Erro import:", error);
+                    console.log(`${lines.length} convidadas importadas com sucesso via Batch.`);
+                } catch (err) {
+                    console.error("Erro na importação em massa:", err);
+                    alert("Ocorreu um erro ao processar a lista completa. Verifique a consola.");
                 } finally {
                     setIsImporting(false);
+                    setIsImportModalOpen(false);
+                    setImportText('');
                 }
             };
+
+            const stats = useMemo(() => {
+                const confirmed = guests.filter(g => g.rsvp === 'Confirmado');
+                return {
+                    total: guests.length,
+                    confirmed: confirmed.length,
+                    absent: guests.filter(g => g.rsvp === 'Recusado').length,
+                    notArrived: confirmed.filter(g => !g.arrived).length,
+                    arrived: guests.filter(g => g.arrived).length
+                };
+            }, [guests]);
 
             const filteredGuests = useMemo(() => {
-                return guests.filter(g => {
-                    const matchesFilter = guestFilter === 'Todas' || (g.category && g.category.toLowerCase() === guestFilter.toLowerCase());
-                    const matchesSearch = (g.name || "").toLowerCase().includes(guestSearch.toLowerCase());
-                    return matchesFilter && matchesSearch;
-                });
-            }, [guests, guestFilter, guestSearch]);
+                return guests
+                    .filter(g => {
+                        const lowSearch = searchTerm.toLowerCase();
+                        const matchesName = g.name?.toLowerCase().includes(lowSearch);
+                        const matchesGiftId = g.giftId?.toString().toLowerCase().includes(lowSearch);
+                        
+                        const matchesCat = filterCategory === 'Todas' || g.category === filterCategory;
+                        const matchesPresence = presenceFilter === 'Todas' 
+                            || (presenceFilter === 'Pendentes' && !g.arrived)
+                            || (presenceFilter === 'Já chegou' && g.arrived);
+                        
+                        return (matchesName || matchesGiftId) && matchesCat && matchesPresence;
+                    })
+                    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            }, [guests, searchTerm, filterCategory, presenceFilter]);
 
-            const handleImageUpload = (e, callback) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => callback(reader.result);
-                    reader.readAsDataURL(file);
-                }
-            };
-
-            if (loading && !user) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-white p-6">
-                        <div className="flex flex-col items-center text-center">
-                            <div className="w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
-                            <p className="mt-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Sincronizando dados...</p>
-                        </div>
-                    </div>
-                );
-            }
-
-            const GuestDetailModal = ({ guest, onClose }) => (
-                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto">
-                    <div className="bg-white rounded-[2rem] w-full max-w-xl shadow-2xl overflow-hidden animate-pop my-auto">
-                        <div className="relative h-44 md:h-52" style={{ backgroundColor: settings.primaryColor }}>
-                            <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent"></div>
-                            <button onClick={onClose} className="absolute top-4 right-4 p-2.5 bg-white/20 hover:bg-white/40 text-white rounded-full transition-all"><Icon name="X" size={18} /></button>
-                        </div>
-                        {/* Ajuste de margem superior para o conteúdo respirar melhor */}
-                        <div className="px-6 md:px-10 pb-10 -mt-16 md:-mt-20 relative">
-                            <div className="flex flex-col md:flex-row items-center md:items-end gap-5 mb-10">
-                                <div className="w-32 h-32 md:w-36 md:h-36 rounded-[2rem] bg-white p-1.5 shadow-2xl overflow-hidden border-4 border-white mx-auto md:mx-0">
-                                    {guest.photo ? <img src={guest.photo} className="w-full h-full object-cover rounded-[1.8rem]" alt="" /> : <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-200"><Icon name="User" size={56} /></div>}
-                                </div>
-                                <div className="flex-1 pb-2 text-center md:text-left mt-4 md:mt-0">
-                                    <h3 className="text-2xl md:text-3xl font-serif font-bold text-slate-800 leading-tight">{guest.name}</h3>
-                                    <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-3">
-                                        <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-slate-100 shadow-sm" style={{ backgroundColor: settings.primaryLight, color: settings.primaryColor }}>{guest.category}</span>
-                                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-slate-100 shadow-sm ${guest.rsvp === 'Confirmado' ? 'bg-green-50 text-green-600 border-green-100' : 'text-slate-400'}`}>RSVP: {guest.rsvp || 'Pendente'}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-center md:text-left">
-                                <div className="bg-slate-50/80 p-5 rounded-[1.5rem] border border-slate-100 shadow-inner">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <div className="flex items-center gap-2"><Icon name="Package" style={{ color: settings.primaryColor }} size={16} /><h4 className="font-bold text-slate-700 text-[10px] uppercase tracking-wider">Identificação</h4></div>
-                                        {guest.giftNumber && <div className="bg-slate-800 text-white px-3.5 py-1 rounded-lg text-sm font-black shadow-lg">#{guest.giftNumber}</div>}
-                                    </div>
-                                    <div className="aspect-video w-full rounded-xl overflow-hidden mb-3 border border-white shadow-sm bg-white">{guest.giftPhoto ? <img src={guest.giftPhoto} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-200"><Icon name="Gift" size={24} /></div>}</div>
-                                    <p className="text-slate-600 text-[13px] font-semibold italic leading-relaxed">{guest.giftText || "Detalhes pendentes"}</p>
-                                </div>
-                                <div className="flex flex-col gap-4">
-                                    <div className={`p-5 rounded-[1.5rem] border shadow-sm flex items-center justify-between ${guest.arrived ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'}`}>
-                                        <div><p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-2">Presença</p><p className={`text-xl font-bold ${guest.arrived ? 'text-green-600' : 'text-slate-300'}`}>{guest.arrived ? 'Já Chegou!' : 'Aguardada'}</p></div>
-                                        <Icon name="CheckCircle2" size={24} className={guest.arrived ? "text-green-500 shadow-xl" : "text-slate-100"} />
-                                    </div>
-                                    <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-[10px] hover:bg-black uppercase tracking-widest shadow-xl transition-all mt-auto">Voltar</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            if (loading) return (
+                <div className="h-screen flex flex-col items-center justify-center bg-white gap-4">
+                    <div className="w-12 h-12 border-4 border-slate-100 rounded-full animate-spin" style={{ borderTopColor: settings.primaryColor }}></div>
+                    <p className="text-xs font-bold text-slate-400 animate-pulse">A ligar ao servidor...</p>
                 </div>
             );
 
-            const EditableRow = ({ item, type, onSave, onDelete }) => {
-                const [isEditing, setIsEditing] = useState(false);
-                const [tempData, setTempData] = useState(item);
-                if (isEditing) {
-                    return (
-                        <div className="bg-white p-5 md:p-8 rounded-[2rem] mb-4 border-2 shadow-2xl animate-pop" style={{ borderColor: settings.primaryColor + '40' }}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                {type === 'guest' ? (
-                                    <><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Nome</label><input className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none text-sm font-semibold" value={tempData.name || ''} onChange={e => setTempData({...tempData, name: e.target.value})} /></div><div className="space-y-1"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Grupo</label><select className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none text-sm" value={tempData.category || ''} onChange={e => setTempData({...tempData, category: e.target.value})}>{categories.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}</select></div><div className="space-y-1"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">RSVP</label><select className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none text-sm" value={tempData.rsvp || 'Pendente'} onChange={e => setTempData({...tempData, rsvp: e.target.value})}>{rsvpStatus.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div className="space-y-1"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Nº Presente</label><input className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none text-sm font-black" placeholder="Nº" value={tempData.giftNumber || ''} onChange={e => setTempData({...tempData, giftNumber: e.target.value})} /></div><div className="space-y-1"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Descrição</label><input className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none text-sm" value={tempData.giftText || ''} onChange={e => setTempData({...tempData, giftText: e.target.value})} /></div><div className="space-y-1"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Foto Perfil</label><label className="flex items-center justify-center gap-2 p-4 bg-white border border-slate-100 rounded-xl cursor-pointer text-[10px] font-bold"><Icon name="Upload" size={14} />{tempData.photo ? 'MUDAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, photo: img}))} /></label></div><div className="space-y-1 lg:col-span-3"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Foto Presente</label><label className="flex items-center justify-center gap-2 p-4 bg-white border border-slate-100 rounded-xl cursor-pointer text-[10px] font-bold"><Icon name="Upload" size={14} />{tempData.giftPhoto ? 'ALTERAR' : 'UPLOAD'}<input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, (img) => setTempData({...tempData, giftPhoto: img}))} /></label></div></>
-                                ) : (Object.keys(tempData).filter(k => !['id', 'createdAt'].includes(k)).map(key => (<div key={key} className="space-y-1"><label className="text-[10px] font-bold uppercase text-slate-400">{key}</label><input className="w-full p-4 rounded-xl border outline-none text-sm" value={tempData[key] || ''} onChange={e => setTempData({...tempData, [key]: e.target.value})} /></div>)))}
-                            </div>
-                            <div className="flex justify-end gap-3 mt-6 pt-5 border-t border-slate-50"><button onClick={() => setIsEditing(false)} className="px-6 py-2.5 text-slate-400 text-[10px] font-black uppercase tracking-widest">Sair</button><button onClick={() => { onSave(tempData); setIsEditing(false); }} className="px-10 py-3 text-white rounded-xl text-[10px] font-black uppercase shadow-lg" style={{ backgroundColor: settings.primaryColor }}>Guardar</button></div>
-                        </div>
-                    );
-                }
-                if (type === 'guest') {
-                    return (
-                        <div className="group grid grid-cols-12 gap-2 items-center p-3.5 bg-white border-b border-slate-50 hover:bg-slate-50/60 transition-all rounded-2xl mb-1.5 shadow-sm">
-                            <div className="col-span-6 md:col-span-4 flex items-center gap-3 md:gap-4 cursor-pointer" onClick={() => setSelectedGuest(item)}>
-                                <div className="w-10 h-10 md:w-11 md:h-11 rounded-[0.8rem] flex-shrink-0 overflow-hidden border-2 border-white shadow-sm transition-transform group-hover:scale-110">{item.photo ? <img src={item.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Icon name="User" size={16} /></div>}</div>
-                                <div className="overflow-hidden leading-tight text-left"><span className="font-bold text-slate-800 text-[13px] md:text-sm block truncate group-hover:text-pink-600 transition-colors">{item.name || "---"}</span><span className="text-[8px] md:text-[9px] font-black uppercase text-slate-400 leading-none">{item.category}</span></div>
-                            </div>
-                            <div className="hidden md:block col-span-2 text-center"><span className={`text-[9px] px-3 py-1 rounded-lg font-black uppercase flex items-center justify-center gap-1.5 mx-auto w-fit border border-slate-100 ${item.rsvp === 'Confirmado' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-slate-50 text-slate-300'}`}>{item.rsvp || 'Pendente'}</span></div>
-                            <div className="col-span-3 md:col-span-3 flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-100 flex-shrink-0 flex items-center justify-center text-[11px] font-black text-slate-500 shadow-inner">{item.giftNumber ? `#${item.giftNumber}` : <Icon name="Package" size={14} className="text-slate-200" />}</div>
-                                <p className="hidden md:block text-[11px] text-slate-400 italic truncate max-w-full font-medium">{item.giftText || "---"}</p>
-                            </div>
-                            <div className="col-span-2 md:col-span-2 flex justify-center"><button onClick={() => onSave({...item, arrived: !item.arrived})} className={`w-full py-2 rounded-xl text-[8px] md:text-[9px] font-black uppercase transition-all shadow-sm ${item.arrived ? 'bg-green-500 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-300 hover:border-slate-400'}`}>{item.arrived ? 'VEIO' : 'CHECK'}</button></div>
-                            <div className="col-span-1 md:col-span-1 flex justify-end gap-1.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 p-1.5"><Icon name="Edit2" size={14} /></button><button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 p-1.5"><Icon name="Trash2" size={14} /></button></div>
-                        </div>
-                    );
-                }
-                return (
-                    <div className="group flex justify-between items-center p-3.5 bg-white rounded-xl mb-2.5 border border-slate-50 transition-all shadow-sm">
-                        <div className="flex gap-6 md:gap-10 flex-wrap text-left">{Object.entries(item).filter(([k]) => !['id', 'createdAt'].includes(k)).map(([k, v]) => (
-                            <div key={k} className="min-w-[80px]"><p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1.5">{k}</p><p className="text-[13px] font-bold text-slate-700 leading-tight">{String(v || "")}</p></div>
-                        ))}</div>
-                        <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setIsEditing(true)} className="text-blue-500 p-2 hover:bg-blue-50 rounded-xl"><Icon name="Edit2" size={16} /></button><button onClick={() => onDelete(item.id)} className="text-red-500 p-2 hover:bg-red-50 rounded-xl"><Icon name="Trash2" size={16} /></button></div>
-                    </div>
-                );
-            };
-
             return (
-                <div className="min-h-screen pb-32 transition-colors duration-700" style={{ backgroundColor: settings.primaryLight }}>
-                    <header className="bg-white/90 backdrop-blur-xl shadow-md border-b sticky top-0 z-50 px-4 md:px-6 py-5 md:py-6 border-slate-100">
-                        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-5 text-center md:text-left">
-                            <div className="cursor-pointer group" onClick={() => setActiveTab('convidadas')}>
-                                <h1 className="text-2xl md:text-3xl font-serif font-bold uppercase tracking-tighter transition-all group-hover:scale-105" style={{ color: settings.primaryColor }}>{settings.title}</h1>
-                                <p className="text-[9px] md:text-[11px] font-black tracking-[0.4em] opacity-40 uppercase" style={{ color: settings.primaryColor }}>Organizador Interno</p>
-                            </div>
-                            <nav className="flex gap-1.5 overflow-x-auto w-full md:w-auto scrollbar-hide py-1">
-                                {[
-                                    { id: 'convidadas', icon: 'Users' },
-                                    { id: 'cronograma', icon: 'Calendar' },
-                                    { id: 'cardapio', icon: 'Utensils' },
-                                    { id: 'configuracoes', icon: 'Settings' },
-                                ].map(tab => (
-                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2.5 px-4 md:px-6 py-2.5 md:py-3.5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap shadow-sm ${activeTab === tab.id ? 'text-white scale-105 shadow-lg' : 'bg-white text-slate-400 hover:text-slate-600'}`} style={activeTab === tab.id ? { backgroundColor: settings.primaryColor } : {}}>
-                                        <Icon name={tab.icon} size={14} />
-                                        {settings.labels?.[tab.id] || tab.id}
-                                    </button>
-                                ))}
-                            </nav>
+                <div className="min-h-screen pb-20 transition-colors-custom" style={{ backgroundColor: settings.tertiaryColor }}>
+                    <header className="glass sticky top-0 z-40 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div className="text-center md:text-left cursor-pointer" onClick={() => setActiveTab('guests')}>
+                            <h1 className="text-xl md:text-2xl font-serif font-bold transition-colors-custom" style={{ color: settings.primaryColor }}>{settings.title}</h1>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{settings.subtitle}</p>
                         </div>
+                        <nav className="flex gap-1 overflow-x-auto max-w-full pb-2 md:pb-0 no-scrollbar items-center">
+                            {['guests', 'schedule', 'menu', 'favors', 'settings'].map((key) => {
+                                const label = settings.labels[key];
+                                return (
+                                    <button 
+                                        key={key} 
+                                        onClick={() => setActiveTab(key)} 
+                                        className={`px-5 py-2.5 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all whitespace-nowrap flex items-center justify-center ${activeTab === key ? 'text-white shadow-lg' : 'text-slate-400 hover:bg-white/50'}`} 
+                                        style={activeTab === key ? { backgroundColor: settings.primaryColor } : {}}
+                                    >
+                                        {key === 'settings' ? <Icon name="Settings" size={16} /> : label}
+                                    </button>
+                                );
+                            })}
+                        </nav>
                     </header>
 
-                    <main className="max-w-6xl mx-auto px-4 py-8 md:py-10">
-                        {activeTab === 'configuracoes' && (
-                            <div className="bg-white rounded-[2.5rem] md:rounded-[3.5rem] shadow-2xl p-8 md:p-12 border border-slate-50 animate-pop">
-                                <div className="flex items-center gap-5 mb-10 text-slate-800"><div className="p-4 rounded-3xl bg-slate-50 shadow-inner"><Icon name="Settings" size={32} /></div><h2 className="text-2xl md:text-3xl font-serif font-bold text-left">Configurações</h2></div>
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                                    <div className="space-y-8">
-                                        <div className="space-y-2 text-left"><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Título Principal</label><input type="text" className="w-full p-5 rounded-2xl bg-slate-50 border-none outline-none focus:ring-4 focus:ring-pink-100 text-lg md:text-2xl font-serif transition-all" value={settings.title || ""} onChange={(e) => handleSaveSettings({...settings, title: e.target.value})} /></div>
-                                        <div className="space-y-2 text-left"><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Cor Principal</label><div className="flex items-center gap-5"><input type="color" className="w-20 h-20 rounded-3xl cursor-pointer border-none p-0 overflow-hidden shadow-xl transition-transform hover:scale-110" value={settings.primaryColor || "#ec4899"} onChange={(e) => handleSaveSettings({...settings, primaryColor: e.target.value, primaryLight: e.target.value + '15'})} /><div className="flex-1 p-5 bg-slate-50 rounded-2xl shadow-inner"><p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed">Código HEX: <span className="font-mono text-slate-800">{settings.primaryColor}</span></p></div></div></div>
+                    <main className="max-w-6xl mx-auto px-6 mt-8">
+                        {activeTab === 'guests' && (
+                            <>
+                                <section className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-10">
+                                    {[
+                                        { label: settings.labels.guests, val: stats.total, color: 'text-slate-600', bg: 'bg-white' },
+                                        { label: 'Confirmadas', val: stats.confirmed, color: 'text-emerald-500', bg: 'bg-white' },
+                                        { label: 'Ausentes', val: stats.absent, color: 'text-red-400', bg: 'bg-white' },
+                                        { label: 'Não chegaram', val: stats.notArrived, color: 'text-amber-500', bg: 'bg-white' },
+                                        { label: 'Já chegou!', val: stats.arrived, color: 'text-emerald-700', bg: 'bg-emerald-50 border border-emerald-100' }
+                                    ].map((s, i) => (
+                                        <div key={i} className={`dash-card p-5 rounded-[2rem] shadow-soft flex flex-col items-center text-center ${s.bg}`}>
+                                            <span className="text-[9px] font-black uppercase tracking-tighter text-slate-400 mb-2 leading-none h-4 flex items-center">{s.label}</span>
+                                            <span className={`text-2xl md:text-3xl font-serif font-bold ${s.color}`}>{s.val}</span>
+                                        </div>
+                                    ))}
+                                </section>
+
+                                <div className="space-y-8 animate-in fade-in duration-500">
+                                    <div className="flex flex-col xl:flex-row gap-4 justify-between items-center">
+                                        <div className="relative w-full xl:w-96 shadow-soft rounded-2xl">
+                                            <Icon name="Search" size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                                            <input type="text" placeholder="Nome ou nº presente..." className="w-full pl-11 pr-4 py-3 bg-white rounded-2xl border-none shadow-soft outline-none text-sm focus:ring-2" style={{ '--tw-ring-color': settings.primaryColor + '30' }} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 w-full xl:w-auto">
+                                            <div className="flex bg-white rounded-2xl shadow-soft p-1">
+                                                {['Todas', 'Pendentes', 'Já chegou'].map(p => (
+                                                    <button key={p} onClick={() => setPresenceFilter(p)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${presenceFilter === p ? 'text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} style={presenceFilter === p ? { backgroundColor: settings.primaryColor } : {}}>{p}</button>
+                                                ))}
+                                            </div>
+                                            <select className="bg-white px-4 py-3 rounded-2xl shadow-soft text-xs font-bold text-slate-500 outline-none border-none cursor-pointer" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+                                                <option value="Todas">Categorias</option>
+                                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                            <button onClick={() => setIsImportModalOpen(true)} className="px-6 py-3 bg-white text-slate-400 rounded-2xl shadow-soft font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors"><Icon name="ClipboardList" size={16} /> Importar</button>
+                                            <button onClick={() => setEditingGuest({ name: '', category: 'Família Noiva', rsvp: 'Pendente', arrived: false, gift: '', giftId: '', photo: '', giftPhoto: '' })} className="px-6 py-3 text-white rounded-2xl shadow-lg font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:opacity-90" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" size={16} /> Nova</button>
+                                        </div>
                                     </div>
-                                    <div className="bg-slate-50/50 p-8 rounded-[2.5rem] border border-slate-100 shadow-inner">
-                                        <label className="text-[11px] font-black uppercase tracking-widest text-slate-400 block mb-6 text-center">Nomes do Menu Superior</label>
-                                        <div className="grid grid-cols-2 gap-5">
-                                            {['convidadas', 'cronograma', 'cardapio', 'configuracoes'].map(key => (
-                                                <div key={key} className="space-y-1.5 text-left">
-                                                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-tighter ml-1">{key}</label>
-                                                    <input type="text" className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 outline-none text-[11px] font-bold text-slate-700 focus:border-pink-300 transition-all shadow-sm" 
-                                                           value={settings.labels?.[key] || ""} 
-                                                           onChange={(e) => {
-                                                               const newLabels = { ...settings.labels, [key]: e.target.value };
-                                                               handleSaveSettings({...settings, labels: newLabels});
-                                                           }} 
-                                                    />
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {filteredGuests.map(guest => (
+                                            <div key={guest.id} onClick={() => setSelectedGuestView(guest)} className="bg-white p-6 rounded-[2.5rem] shadow-soft border border-transparent hover:border-pink-100 transition-all group relative cursor-pointer">
+                                                <div className="flex items-center gap-4 mb-6">
+                                                    <div className="w-16 h-16 rounded-2xl bg-slate-50 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
+                                                        {guest.photo ? <img src={guest.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-200"><Icon name="User" size={24} /></div>}
+                                                    </div>
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <h3 className="text-lg font-serif font-bold text-slate-800 truncate leading-tight">{guest.name}</h3>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest mt-1" style={{ color: settings.secondaryColor }}>{guest.category}</p>
+                                                    </div>
+                                                    <div className="flex flex-col gap-1">
+                                                        <button onClick={(e) => { e.stopPropagation(); setEditingGuest(guest); }} className="p-2 text-slate-300 hover:text-slate-600"><Icon name="Settings" size={14} /></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleDelete('guests', guest.id); }} className="p-2 text-slate-200 hover:text-red-400"><Icon name="Trash" size={14} /></button>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-3xl border border-slate-100 mb-4">
+                                                    <div className="w-14 h-14 rounded-xl bg-white overflow-hidden flex-shrink-0 flex items-center justify-center shadow-sm border border-slate-100">
+                                                        {guest.giftPhoto ? <img src={guest.giftPhoto} className="w-full h-full object-cover" /> : <Icon name="Gift" size={20} style={{ color: settings.primaryColor + '40' }} />}
+                                                    </div>
+                                                    <div className="flex flex-col overflow-hidden">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            {guest.giftId && <span className="px-2 py-0.5 rounded-md font-black text-[10px] text-white" style={{ backgroundColor: settings.primaryColor }}>#{guest.giftId}</span>}
+                                                            <span className="text-[9px] font-black uppercase leading-none opacity-40">ITEM</span>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-slate-700 truncate">{guest.gift || 'Não atribuído'}</p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={(e) => { e.stopPropagation(); handleSave('guests', { arrived: !guest.arrived }, guest.id); }} className={`w-full py-3.5 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${guest.arrived ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
+                                                    {guest.arrived ? 'Já chegou' : 'Confirmar Entrada'}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {activeTab === 'schedule' && (
+                            <div className="max-w-3xl mx-auto space-y-6 animate-in slide-in-from-bottom duration-500">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-2xl font-serif font-bold">{settings.labels.schedule}</h2>
+                                    <button onClick={() => handleSave('schedule', { date: '00:00', description: 'Nova Atividade...', photo: '' })} className="p-3 rounded-full text-white shadow-lg transition-transform hover:scale-110" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" /></button>
+                                </div>
+                                {schedule.sort((a,b) => a.date.localeCompare(b.date)).map(item => (
+                                    <div key={item.id} className="bg-white p-5 rounded-[2rem] shadow-soft flex items-center gap-4 group border border-transparent hover:border-pink-100 transition-all">
+                                        <label className="relative w-16 h-16 rounded-2xl flex-shrink-0 overflow-hidden upload-small cursor-pointer flex items-center justify-center text-slate-200" style={{ color: settings.primaryColor + '40' }}>
+                                            {item.photo ? <img src={item.photo} className="w-full h-full object-cover" /> : <Icon name="Image" size={20} />}
+                                            <input type="file" className="hidden" accept="image/*" onChange={e => handlePhotoUpload(e, (p) => handleSave('schedule', { photo: p }, item.id))} />
+                                        </label>
+                                        <input type="text" className="w-20 text-center font-black text-xs p-2 bg-slate-50 rounded-xl outline-none" style={{ color: settings.secondaryColor }} value={item.date} onChange={e => handleSave('schedule', { date: e.target.value }, item.id)} />
+                                        <input type="text" className="flex-1 font-bold text-slate-700 p-2 bg-transparent outline-none" value={item.description} onChange={e => handleSave('schedule', { description: e.target.value }, item.id)} />
+                                        <button onClick={() => handleDelete('schedule', item.id)} className="text-slate-200 hover:text-red-400 p-2"><Icon name="Trash" size={16} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {activeTab === 'menu' && (
+                            <div className="max-w-3xl mx-auto space-y-6 animate-in slide-in-from-bottom duration-500">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-2xl font-serif font-bold">{settings.labels.menu}</h2>
+                                    <button onClick={() => handleSave('menu', { category: 'Entrada', description: 'Novo prato...', photo: '' })} className="p-3 rounded-full text-white shadow-lg transition-transform hover:scale-110" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" /></button>
+                                </div>
+                                {MENU_CATEGORIES.map(cat => {
+                                    const items = menu.filter(m => m.category === cat);
+                                    if (items.length === 0 && menu.length > 0) return null;
+                                    return (
+                                        <div key={cat} className="space-y-4">
+                                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] px-4" style={{ color: settings.secondaryColor }}>{cat}</h3>
+                                            {items.map(item => (
+                                                <div key={item.id} className="bg-white p-5 rounded-[2rem] shadow-soft flex items-center gap-4 border border-transparent hover:border-pink-100 transition-all">
+                                                    <label className="relative w-16 h-16 rounded-2xl flex-shrink-0 overflow-hidden upload-small cursor-pointer flex items-center justify-center text-slate-200" style={{ color: settings.primaryColor + '40' }}>
+                                                        {item.photo ? <img src={item.photo} className="w-full h-full object-cover" /> : <Icon name="Coffee" size={20} />}
+                                                        <input type="file" className="hidden" accept="image/*" onChange={e => handlePhotoUpload(e, (p) => handleSave('menu', { photo: p }, item.id))} />
+                                                    </label>
+                                                    <div className="flex-1 flex flex-col gap-1">
+                                                        <select className="text-[9px] font-black uppercase w-fit bg-slate-50 px-2 py-1 rounded-md outline-none" value={item.category} onChange={e => handleSave('menu', { category: e.target.value }, item.id)}>
+                                                            {MENU_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                                        </select>
+                                                        <textarea rows="1" className="font-bold text-slate-700 p-1 bg-transparent outline-none resize-none" value={item.description} onChange={e => handleSave('menu', { description: e.target.value }, item.id)} />
+                                                    </div>
+                                                    <button onClick={() => handleDelete('menu', item.id)} className="text-slate-200 hover:text-red-400 p-2"><Icon name="Trash" size={16} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {activeTab === 'favors' && (
+                            <div className="max-w-3xl mx-auto space-y-6 animate-in slide-in-from-bottom duration-500">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-2xl font-serif font-bold">{settings.labels.favors}</h2>
+                                    <button onClick={() => handleSave('favors', { description: 'Nova lembrança...', photo: '' })} className="p-3 rounded-full text-white shadow-lg transition-transform hover:scale-110" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" /></button>
+                                </div>
+                                {favors.map(item => (
+                                    <div key={item.id} className="bg-white p-6 rounded-[2rem] shadow-soft flex items-center gap-6 border border-transparent hover:border-pink-100 transition-all">
+                                        <label className="relative w-20 h-20 rounded-3xl flex-shrink-0 overflow-hidden upload-small cursor-pointer flex items-center justify-center text-slate-200" style={{ color: settings.primaryColor + '40' }}>
+                                            {item.photo ? <img src={item.photo} className="w-full h-full object-cover" /> : <Icon name="Sparkles" size={24} />}
+                                            <input type="file" className="hidden" accept="image/*" onChange={e => handlePhotoUpload(e, (p) => handleSave('favors', { photo: p }, item.id))} />
+                                        </label>
+                                        <textarea rows="2" className="flex-1 font-bold text-slate-700 p-2 bg-transparent outline-none resize-none" value={item.description} onChange={e => handleSave('favors', { description: e.target.value }, item.id)} />
+                                        <button onClick={() => handleDelete('favors', item.id)} className="text-slate-200 hover:text-red-400 p-2"><Icon name="Trash" size={16} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {activeTab === 'settings' && (
+                            <div className="max-w-2xl mx-auto space-y-8 animate-in slide-in-from-bottom duration-500">
+                                <div className="bg-white p-10 rounded-[3rem] shadow-soft space-y-10">
+                                    <h2 className="text-2xl font-serif font-bold text-center">Identidade & Nomes</h2>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Título Site</label>
+                                            <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" value={settings.title} onChange={e => setSettings({...settings, title: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Subtítulo Site</label>
+                                            <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" value={settings.subtitle} onChange={e => setSettings({...settings, subtitle: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2 block">Nomes das Abas</label>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                            {Object.keys(settings.labels).map(key => (
+                                                <div key={key} className="space-y-1">
+                                                    <label className="text-[8px] font-black text-slate-300 uppercase ml-1">{key}</label>
+                                                    <input className="w-full p-2.5 bg-slate-50 rounded-xl outline-none text-[11px] font-bold" value={settings.labels[key]} onChange={e => {
+                                                        const newLabels = {...settings.labels, [key]: e.target.value};
+                                                        setSettings({...settings, labels: newLabels});
+                                                    }} onBlur={() => handleSave('config', settings, 'settings')} />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2 block">Cores do Sistema</label>
+                                        <div className="grid grid-cols-3 gap-4">
+                                            {['primaryColor', 'secondaryColor', 'tertiaryColor'].map(c => (
+                                                <div key={c} className="space-y-1">
+                                                    <input type="color" className="w-full h-12 p-1 bg-slate-50 rounded-xl cursor-pointer" value={settings[c]} onChange={e => setSettings({...settings, [c]: e.target.value})} onBlur={() => handleSave('config', settings, 'settings')} />
                                                 </div>
                                             ))}
                                         </div>
@@ -373,52 +510,115 @@
                                 </div>
                             </div>
                         )}
-
-                        {activeTab === 'convidadas' && (
-                            <div className="space-y-8">
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                                    {[{ label: 'Total', val: guests.length, color: settings.primaryColor, dark: true }, { label: 'Sim', val: guests.filter(g => g.rsvp === 'Confirmado').length, color: '#22c55e', dark: false }, { label: 'Espera', val: guests.filter(g => g.rsvp === 'Pendente' || !g.rsvp).length, color: '#f59e0b', dark: false }, { label: 'Chegaram', val: guests.filter(g => g.arrived).length, color: settings.primaryColor, dark: false }].map((card, i) => (<div key={i} className={`p-6 md:p-10 rounded-[1.5rem] md:rounded-[2.5rem] shadow-xl flex flex-col justify-center transition-transform hover:translate-y-[-4px] text-center md:text-left`} style={card.dark ? { backgroundColor: card.color, color: 'white' } : { backgroundColor: 'white' }}><p className={`text-[9px] md:text-[11px] font-black uppercase tracking-widest mb-1 ${card.dark ? 'opacity-60' : 'text-slate-300'}`}>{card.label}</p><p className={`text-3xl md:text-4xl font-serif font-bold ${!card.dark ? 'text-slate-800' : ''}`} style={!card.dark && card.label === 'Chegaram' ? { color: card.color } : {}}>{card.val}</p></div>))}
-                                </div>
-                                <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-2xl border border-slate-50 overflow-hidden">
-                                    <div className="p-5 md:p-10">
-                                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 mb-10 text-left">
-                                            <div><h2 className="text-2xl md:text-4xl font-serif font-bold text-slate-800 tracking-tight">{settings.labels?.convidadas || 'Convidadas'}</h2><p className="text-slate-400 text-xs md:text-sm font-medium italic mt-1.5 tracking-wide">Gestão de presenças e presentes numerados.</p></div>
-                                            <div className="flex gap-3 w-full lg:w-auto"><button onClick={() => setIsImportModalOpen(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2.5 bg-slate-50 text-slate-400 px-6 md:px-10 py-4 md:py-5 rounded-2xl hover:bg-slate-100 transition-all font-black text-[9px] md:text-[11px] tracking-widest uppercase shadow-inner"><Icon name="ClipboardPaste" size={16} /> Importar</button><button onClick={() => handleAddItem('guests', { name: 'Nova Convidada', category: 'Amigos em Comum', rsvp: 'Pendente', arrived: false })} className="flex-1 lg:flex-none flex items-center justify-center gap-2.5 text-white px-6 md:px-10 py-4 md:py-5 rounded-2xl transition-all font-black text-[9px] md:text-[11px] tracking-widest uppercase shadow-2xl shadow-pink-100 hover:scale-105" style={{ backgroundColor: settings.primaryColor }}><Icon name="Plus" size={16} /> Nova</button></div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 text-left"><div className="relative group"><Icon name="Search" className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-200 group-focus-within:text-pink-400" size={18} /><input type="text" placeholder="Localizar nome..." className="w-full pl-14 pr-6 py-5 bg-slate-50 rounded-2xl outline-none text-sm border-none shadow-inner transition-all focus:bg-slate-100" value={guestSearch} onChange={e => setGuestSearch(e.target.value)} /></div><div className="bg-slate-50 px-6 py-5 rounded-2xl flex items-center gap-4 shadow-inner"><Icon name="Filter" className="text-slate-200" size={18} /><select className="bg-transparent border-none w-full outline-none text-[11px] text-slate-500 font-black tracking-widest uppercase appearance-none cursor-pointer" value={guestFilter} onChange={e => setGuestFilter(e.target.value)}>{categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div></div>
-                                        <div className="hidden md:grid grid-cols-12 gap-3 px-8 py-5 bg-slate-50/70 rounded-2xl mb-5 text-[10px] font-black text-slate-300 uppercase tracking-widest"><div className="col-span-4 text-left">NOME / GRUPO</div><div className="col-span-2 text-center">RSVP</div><div className="col-span-3 text-left">Nº PRESENTE</div><div className="col-span-2 text-center">STATUS</div><div className="col-span-1 text-right">AÇÕES</div></div>
-                                        <div className="min-h-[400px] space-y-1.5">{filteredGuests.length > 0 ? filteredGuests.map(guest => (<EditableRow key={guest.id} item={guest} type="guest" onSave={d => handleUpdateItem('guests', guest.id, d)} onDelete={id => handleDeleteItem('guests', id)} />)) : (<div className="flex flex-col items-center justify-center py-48 text-slate-200 gap-6 opacity-40"><Icon name="Users" size={100} strokeWidth={1} /><p className="font-black uppercase tracking-[0.4em] text-[13px]">Vazio</p></div>)}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {(activeTab === 'cronograma' || activeTab === 'cardapio') && (
-                            <div className="bg-white rounded-[2.5rem] md:rounded-[4rem] shadow-2xl p-8 md:p-14 border border-slate-50 animate-pop">
-                                <div className="flex justify-between items-center mb-12"><div className="flex items-center gap-5 text-slate-800"><div className="p-4 rounded-3xl bg-slate-50 shadow-inner">{activeTab === 'cronograma' ? <Icon name="Calendar" size={32} /> : <Icon name="Utensils" size={32} />}</div><h2 className="text-2xl md:text-4xl font-serif font-bold capitalize">{settings.labels?.[activeTab] || activeTab}</h2></div><button onClick={() => { if(activeTab === 'cronograma') handleAddItem('schedule', { time: '00:00', activity: 'Descrição da Atividade' }); if(activeTab === 'cardapio') handleAddItem('menu', { type: 'Comida/Bebida', item: 'Nome do Prato' }); }} className="text-white px-10 py-4 md:py-5 rounded-2xl font-black text-[10px] md:text-[11px] tracking-widest uppercase shadow-2xl transition-all hover:scale-105" style={{ backgroundColor: settings.primaryColor }}>Adicionar Item</button></div>
-                                <div className="space-y-4">{activeTab === 'cronograma' && schedule.sort((a,b) => (String(a.time || '')).localeCompare(String(b.time || ''))).map(item => <EditableRow key={item.id} item={item} onSave={d => handleUpdateItem('schedule', item.id, d)} onDelete={id => handleDeleteItem('schedule', id)} />)}{activeTab === 'cardapio' && menu.map(item => <EditableRow key={item.id} item={item} onSave={d => handleUpdateItem('menu', item.id, d)} onDelete={id => handleDeleteItem('menu', id)} />)}</div>
-                            </div>
-                        )}
                     </main>
 
-                    {/* Modal Importação Corrigido */}
-                    {isImportModalOpen && (
-                        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-lg flex items-center justify-center z-[200] p-4">
-                            <div className="bg-white rounded-[2.5rem] md:rounded-[3.5rem] w-full max-w-xl p-8 md:p-14 shadow-2xl animate-pop border border-slate-50 relative my-auto">
-                                <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} className="absolute top-6 right-6 p-3 bg-slate-100 hover:bg-slate-200 text-slate-400 rounded-full transition-all z-[210] shadow-sm hover:rotate-90"><Icon name="X" size={18} /></button>
-                                <h3 className="text-2xl md:text-3xl font-serif font-bold mb-8 text-slate-800 tracking-tight text-left">Colar Lista de Convidadas</h3>
-                                <textarea className="w-full h-80 md:h-96 p-8 bg-slate-50 border-none rounded-[2rem] font-sans text-xs md:text-sm outline-none resize-none shadow-inner placeholder:text-slate-300 transition-all focus:bg-white border focus:border-pink-200" placeholder={"Nome - Categoria\nEx: Tia Maria - Família"} value={importText} onChange={e => setImportText(e.target.value)} />
-                                <div className="flex justify-end gap-5 mt-10">
-                                    <button onClick={() => { setIsImportModalOpen(false); setImportText(''); }} disabled={isImporting} className="px-8 py-4 text-slate-300 font-black text-[11px] uppercase tracking-widest transition-all">Cancelar</button>
-                                    <button onClick={handleBulkImport} disabled={isImporting} className="px-12 py-5 text-white rounded-[1.5rem] font-black text-[10px] uppercase shadow-lg disabled:opacity-50 transition-all shadow-pink-100" style={{ backgroundColor: settings.primaryColor }}>{isImporting ? 'PROCESSANDO...' : 'IMPORTAR AGORA'}</button>
+                    {/* MODAL DETALHES GUEST */}
+                    {selectedGuestView && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 detail-modal-bg animate-in fade-in duration-300">
+                            <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden relative animate-in zoom-in duration-300">
+                                <button onClick={() => setSelectedGuestView(null)} className="absolute top-6 right-6 z-10 p-3 bg-white/80 backdrop-blur rounded-full text-slate-400 shadow-lg hover:scale-110 transition-transform"><Icon name="X" /></button>
+                                <div className="grid grid-cols-1 md:grid-cols-5 h-full">
+                                    <div className="md:col-span-2 bg-slate-50 p-8 flex flex-col gap-6 items-center border-r border-slate-100">
+                                        <div className="w-40 h-40 rounded-[2.5rem] bg-white shadow-xl overflow-hidden border-4 border-white">
+                                            {selectedGuestView.photo ? <img src={selectedGuestView.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-100"><Icon name="User" size={60} /></div>}
+                                        </div>
+                                        <div className="w-full space-y-2">
+                                            <p className="text-[9px] font-black text-slate-300 uppercase text-center tracking-widest leading-none">Foto do Item</p>
+                                            <div className="w-full aspect-square rounded-3xl bg-white shadow-lg overflow-hidden border-2 border-white">
+                                                {selectedGuestView.giftPhoto ? <img src={selectedGuestView.giftPhoto} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-100"><Icon name="Gift" size={40} /></div>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="md:col-span-3 p-10 flex flex-col">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.3em] mb-2" style={{ color: settings.secondaryColor }}>{selectedGuestView.category}</span>
+                                        <h2 className="text-3xl font-serif font-bold text-slate-800 mb-8 leading-tight">{selectedGuestView.name}</h2>
+                                        <div className="grid grid-cols-2 gap-6 mb-8">
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-black text-slate-300 uppercase">Estado Entrada</p>
+                                                <p className={`font-bold ${selectedGuestView.arrived ? 'text-emerald-500' : 'text-slate-400'}`}>{selectedGuestView.arrived ? 'Já chegou' : 'Aguardada'}</p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-black text-slate-300 uppercase">RSVP</p>
+                                                <p className="font-bold text-slate-600">{selectedGuestView.rsvp}</p>
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex-1 relative">
+                                            <div className="flex flex-col gap-2 mb-4">
+                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none">Presente Atribuído</span>
+                                                {selectedGuestView.giftId && (
+                                                    <span className="w-fit text-white px-3 py-1 rounded-lg text-xs font-black shadow-lg shadow-black/10" style={{ backgroundColor: settings.primaryColor }}>Nº {selectedGuestView.giftId}</span>
+                                                )}
+                                            </div>
+                                            <p className="text-slate-700 font-medium leading-relaxed">{selectedGuestView.gift || 'Sem descrição inserida.'}</p>
+                                        </div>
+                                        <div className="mt-8 flex gap-3">
+                                            <button onClick={() => { handleSave('guests', { arrived: !selectedGuestView.arrived }, selectedGuestView.id); setSelectedGuestView(null); }} className={`flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg transition-all ${selectedGuestView.arrived ? 'bg-slate-100 text-slate-400' : 'text-white'}`} style={!selectedGuestView.arrived ? { backgroundColor: settings.secondaryColor } : {}}>
+                                                {selectedGuestView.arrived ? 'Já chegou' : 'Confirmar Entrada'}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     )}
-                    {selectedGuest && <GuestDetailModal guest={selectedGuest} onClose={() => setSelectedGuest(null)} />}
+
+                    {/* MODAL IMPORTAR */}
+                    {isImportModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+                            <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 md:p-10 shadow-2xl animate-in zoom-in duration-300 my-auto">
+                                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-serif font-bold">Importação</h3><button onClick={() => setIsImportModalOpen(false)} className="p-2 text-slate-300"><Icon name="X" /></button></div>
+                                <div className="p-5 rounded-3xl mb-6 space-y-2 border" style={{ backgroundColor: settings.tertiaryColor, borderColor: settings.primaryColor + '20' }}>
+                                    <p className="text-[12px] font-semibold" style={{ color: settings.secondaryColor }}>Nome - Categoria (ex: Alessandra - Amigos Noiva)</p>
+                                </div>
+                                <textarea className="w-full h-72 p-5 bg-slate-50 rounded-2xl border-none outline-none text-sm resize-none mb-6 shadow-inner focus:ring-2 focus:ring-pink-100 transition-all font-medium" value={importText} onChange={e => setImportText(e.target.value)} disabled={isImporting} />
+                                <div className="flex gap-3">
+                                    <button onClick={() => setIsImportModalOpen(false)} disabled={isImporting} className="flex-1 py-4 text-slate-400 font-bold uppercase tracking-widest text-[10px]">Cancelar</button>
+                                    <button onClick={handleBulkImport} disabled={isImporting} className="flex-[2] py-4 text-white rounded-2xl font-bold uppercase tracking-widest shadow-lg flex items-center justify-center gap-2" style={{ backgroundColor: settings.primaryColor }}>
+                                        {isImporting ? <span className="flex items-center gap-2 animate-pulse"><Icon name="Plus" className="animate-spin" size={14}/> A processar...</span> : "Processar Lista"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL EDIÇÃO GUEST */}
+                    {editingGuest && (
+                        <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+                            <div className="bg-white w-full max-w-xl rounded-[3rem] p-8 shadow-2xl animate-in zoom-in duration-300 my-auto">
+                                <div className="flex justify-between items-center mb-8"><h3 className="text-xl font-serif font-bold">{editingGuest.id ? 'Ficha de Cadastro' : 'Novo Registo'}</h3><button onClick={() => setEditingGuest(null)} className="p-2 text-slate-300"><Icon name="X" /></button></div>
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Foto Perfil</label>
+                                        <label className="relative flex flex-col items-center justify-center h-32 w-full rounded-3xl cursor-pointer overflow-hidden bg-slate-50 border-2 border-dashed border-slate-200 hover:border-pink-300 transition-colors">
+                                            {editingGuest.photo ? <img src={editingGuest.photo} className="w-full h-full object-cover" /> : <div className="flex flex-col items-center text-slate-300"><Icon name="Camera" size={24} /><span className="text-[10px] mt-1 font-bold tracking-widest">UPLOAD</span></div>}
+                                            <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(e, (p) => setEditingGuest({...editingGuest, photo: p}))} />
+                                        </label></div>
+                                        <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Foto Item</label>
+                                        <label className="relative flex flex-col items-center justify-center h-32 w-full rounded-3xl cursor-pointer overflow-hidden bg-slate-50 border-2 border-dashed border-slate-200 hover:border-pink-300 transition-colors">
+                                            {editingGuest.giftPhoto ? <img src={editingGuest.giftPhoto} className="w-full h-full object-cover" /> : <div className="flex flex-col items-center text-slate-300"><Icon name="Gift" size={24} /><span className="text-[10px] mt-1 font-bold tracking-widest">UPLOAD</span></div>}
+                                            <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(e, (p) => setEditingGuest({...editingGuest, giftPhoto: p}))} />
+                                        </label></div>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nome</label><input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.name} onChange={e => setEditingGuest({...editingGuest, name: e.target.value})} /></div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Categoria</label><select className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.category} onChange={e => setEditingGuest({...editingGuest, category: e.target.value})}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                            <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">RSVP</label><select className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-bold" value={editingGuest.rsvp} onChange={e => setEditingGuest({...editingGuest, rsvp: e.target.value})}><option value="Pendente">Pendente</option><option value="Confirmado">Confirmado</option><option value="Recusado">Recusado</option></select></div>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-4">
+                                            <div className="col-span-1 space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nº Item</label><input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-black text-center" value={editingGuest.giftId} onChange={e => setEditingGuest({...editingGuest, giftId: e.target.value})} /></div>
+                                            <div className="col-span-3 space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Descrição Presente</label><input className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm font-medium" value={editingGuest.gift} onChange={e => setEditingGuest({...editingGuest, gift: e.target.value})} /></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onClick={() => { handleSave('guests', editingGuest, editingGuest.id); setEditingGuest(null); }} className="w-full py-4 mt-8 text-white rounded-2xl font-bold uppercase tracking-widest shadow-lg" style={{ backgroundColor: settings.primaryColor }}>Salvar Cadastro</button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
