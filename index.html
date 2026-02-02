@@ -39,8 +39,8 @@
         .rsvp-confirmed { border-left: 6px solid #10b981; }
         .rsvp-rejected { border-left: 6px solid #f43f5e; }
         
-        .dash-card { transition: transform 0.3s ease; }
-        .dash-card:hover { transform: translateY(-4px); }
+        .dash-card { transition: all 0.3s ease; cursor: pointer; border: 2px solid transparent; }
+        .dash-card:hover { transform: translateY(-4px); border-color: rgba(236, 72, 153, 0.2); background-color: #fdf2f8; }
 
         .toast-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 1rem; border-radius: 1rem; margin-bottom: 1rem; font-size: 0.75rem; font-weight: bold; display: flex; align-items: center; gap: 0.5rem; }
         .toast-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; padding: 1rem; border-radius: 1rem; margin-bottom: 1rem; font-size: 0.75rem; font-weight: bold; display: flex; align-items: center; gap: 0.5rem; }
@@ -112,8 +112,8 @@
             const [editingGuest, setEditingGuest] = useState(null);
             const [selectedGuestView, setSelectedGuestView] = useState(null);
             
-            // Estado para Confirmação de Exclusão
             const [itemToDelete, setItemToDelete] = useState(null);
+            const [dashboardListView, setDashboardListView] = useState(null);
 
             const firebaseConfig = {
                 apiKey: "AIzaSyD6XXGyXShR1eaPcvIx2mvDcMgLgLRX7Jk",
@@ -186,20 +186,13 @@
                         if (d.exists()) setSettings(prev => ({ ...prev, ...d.data() }));
                         setLoading(false);
                     }, 
-                    (err) => {
-                        console.error("Erro nas definições:", err);
-                        setLoading(false);
-                    }
+                    (err) => setLoading(false)
                 );
 
                 const syncCollection = (name, setter) => {
                     firebase.onSnapshot(firebase.collection(firestore, ...basePath, name), 
-                        (snap) => {
-                            setter(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                        }, 
-                        (err) => {
-                            console.error(`Erro ao sincronizar ${name}:`, err);
-                        }
+                        (snap) => setter(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
+                        (err) => console.error(err)
                     );
                 };
 
@@ -213,19 +206,14 @@
                 if (!user || !sdk || !db) return;
                 try {
                     const colPath = ['artifacts', appId, 'public', 'data', col];
-                    
                     if (id) {
-                        const docRef = sdk.doc(db, ...colPath, id);
-                        await sdk.setDoc(docRef, data, { merge: true });
+                        await sdk.setDoc(sdk.doc(db, ...colPath, id), data, { merge: true });
                     } else {
-                        const colRef = sdk.collection(db, ...colPath);
-                        await sdk.addDoc(colRef, { ...data, createdAt: Date.now() });
+                        await sdk.addDoc(sdk.collection(db, ...colPath), { ...data, createdAt: Date.now() });
                     }
-                    
                     setFeedback({ message: 'Dados guardados!', type: 'success' });
                     setTimeout(() => setFeedback({ message: '', type: '' }), 2000);
                 } catch (e) { 
-                    console.error("Erro ao gravar:", e);
                     setFeedback({ message: 'Erro ao gravar!', type: 'error' });
                 }
             };
@@ -235,22 +223,16 @@
                 try {
                     const { col, id } = itemToDelete;
                     await sdk.deleteDoc(sdk.doc(db, 'artifacts', appId, 'public', 'data', col, id));
-                    setFeedback({ message: 'Item removido!', type: 'success' });
+                    setFeedback({ message: 'Removido!', type: 'success' });
                     setItemToDelete(null);
-                    setTimeout(() => setFeedback({ message: '', type: '' }), 2000);
                 } catch (e) {
                     setFeedback({ message: 'Erro ao eliminar!', type: 'error' });
-                    setItemToDelete(null);
                 }
             };
 
             const handlePhotoUpload = (e, callback) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                if (file.size > 2000000) {
-                    alert("Limite de 2MB excedido!");
-                    return;
-                }
                 const reader = new FileReader();
                 reader.onloadend = () => callback(reader.result);
                 reader.readAsDataURL(file);
@@ -263,41 +245,31 @@
                 try {
                     const batch = sdk.writeBatch(db);
                     const colRef = sdk.collection(db, 'artifacts', appId, 'public', 'data', 'guests');
-                    
                     lines.forEach((line, i) => {
                         const parts = line.split(/[-–—]/);
-                        let name = parts[0]?.trim() || "Convidada";
-                        let category = "Outros";
-                        if (parts[1]) {
-                            const found = CATEGORIES.find(c => c.toLowerCase().includes(parts[1].trim().toLowerCase()));
-                            if (found) category = found;
-                        }
                         batch.set(sdk.doc(colRef), { 
-                            name, category, rsvp: 'Pendente', arrived: false, 
+                            name: parts[0]?.trim() || "Convidada", 
+                            category: "Outros", rsvp: 'Pendente', arrived: false, 
                             gift: '', giftId: '', photo: '', giftPhoto: '',
                             createdAt: Date.now() + i 
                         });
                     });
-
                     await batch.commit();
                     setIsImportModalOpen(false);
                     setImportText('');
-                    setFeedback({ message: `${lines.length} convidadas importadas!`, type: 'success' });
-                } catch (e) {
-                    setFeedback({ message: 'Erro na importação!', type: 'error' });
-                } finally {
-                    setIsImporting(false);
-                }
+                } finally { setIsImporting(false); }
             };
 
             const stats = useMemo(() => {
                 const confirmed = guests.filter(g => g.rsvp === 'Confirmado');
+                const absent = guests.filter(g => g.rsvp === 'Recusado');
+                const arrived = guests.filter(g => g.arrived);
                 return {
                     total: guests.length,
                     confirmed: confirmed.length,
-                    absent: guests.filter(g => g.rsvp === 'Recusado').length,
+                    absent: absent.length,
                     notArrived: confirmed.filter(g => !g.arrived).length,
-                    arrived: guests.filter(g => g.arrived).length
+                    arrived: arrived.length
                 };
             }, [guests]);
 
@@ -307,9 +279,15 @@
                     const matchesSearch = (g.name || "").toLowerCase().includes(lowSearch) || 
                                           (g.giftId || "").toString().toLowerCase().includes(lowSearch);
                     const matchesCat = filterCategory === 'Todas' || g.category === filterCategory;
-                    const matchesPres = presenceFilter === 'Todas' || 
-                                         (presenceFilter === 'Pendentes' && !g.arrived) || 
-                                         (presenceFilter === 'Já chegou' && g.arrived);
+                    
+                    let matchesPres = true;
+                    switch(presenceFilter) {
+                        case 'Pendentes': matchesPres = g.rsvp === 'Confirmado' && !g.arrived; break;
+                        case 'Já chegou': matchesPres = g.arrived; break;
+                        case 'Ausentes': matchesPres = g.rsvp === 'Recusado'; break;
+                        case 'Todas': matchesPres = true; break;
+                    }
+
                     return matchesSearch && matchesCat && matchesPres;
                 }).sort((a,b) => (a.name || "").localeCompare(b.name || ""));
             }, [guests, searchTerm, filterCategory, presenceFilter]);
@@ -324,7 +302,7 @@
             return (
                 <div className="min-h-screen pb-20 transition-colors-custom" style={{ backgroundColor: settings.tertiaryColor }}>
                     <header className="glass sticky top-0 z-40 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="text-center md:text-left cursor-pointer" onClick={() => setActiveTab('guests')}>
+                        <div className="text-center md:text-left cursor-pointer" onClick={() => { setActiveTab('guests'); setPresenceFilter('Todas'); }}>
                             <h1 className="text-xl md:text-2xl font-serif font-bold transition-colors-custom" style={{ color: settings.primaryColor }}>{settings.title}</h1>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{settings.subtitle}</p>
                         </div>
@@ -349,13 +327,27 @@
                             <>
                                 <section className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-10">
                                     {[
-                                        { label: settings.labels.guests, val: stats.total, color: 'text-slate-600', bg: 'bg-white' },
-                                        { label: 'Confirmadas', val: stats.confirmed, color: 'text-emerald-500', bg: 'bg-white' },
-                                        { label: 'Ausentes', val: stats.absent, color: 'text-red-400', bg: 'bg-white' },
-                                        { label: 'Não chegaram', val: stats.notArrived, color: 'text-amber-500', bg: 'bg-white' },
-                                        { label: 'Já chegou!', val: stats.arrived, color: 'text-emerald-700', bg: 'bg-emerald-50 border border-emerald-100' }
-                                    ].map((s, i) => (
-                                        <div key={i} className="dash-card p-5 rounded-[2rem] shadow-soft flex flex-col items-center text-center bg-white">
+                                        { key: 'Todas', label: 'Lista', val: stats.total, color: 'text-slate-600' },
+                                        { key: 'Confirmadas', label: 'Confirmadas', val: stats.confirmed, color: 'text-emerald-500' },
+                                        { key: 'Ausentes', label: 'Ausentes', val: stats.absent, color: 'text-red-400' },
+                                        { key: 'Pendentes', label: 'Não chegaram', val: stats.notArrived, color: 'text-amber-500' },
+                                        { key: 'Já chegou', label: 'Já chegou!', val: stats.arrived, color: 'text-emerald-700' }
+                                    ].map((s) => (
+                                        <div 
+                                            key={s.key} 
+                                            onClick={() => {
+                                                let listToShow = [];
+                                                switch(s.key) {
+                                                    case 'Todas': listToShow = guests; break;
+                                                    case 'Confirmadas': listToShow = guests.filter(g => g.rsvp === 'Confirmado'); break;
+                                                    case 'Ausentes': listToShow = guests.filter(g => g.rsvp === 'Recusado'); break;
+                                                    case 'Pendentes': listToShow = guests.filter(g => g.rsvp === 'Confirmado' && !g.arrived); break;
+                                                    case 'Já chegou': listToShow = guests.filter(g => g.arrived); break;
+                                                }
+                                                setDashboardListView({ title: s.label, list: listToShow });
+                                            }}
+                                            className="dash-card p-5 rounded-[2rem] shadow-soft flex flex-col items-center text-center bg-white"
+                                        >
                                             <span className="text-[9px] font-black uppercase tracking-tighter text-slate-400 mb-2 leading-none h-4 flex items-center">{s.label}</span>
                                             <span className={`text-2xl md:text-3xl font-serif font-bold ${s.color}`}>{s.val}</span>
                                         </div>
@@ -369,12 +361,12 @@
                                             <input type="text" placeholder="Procurar nome ou nº presente..." className="w-full pl-11 pr-4 py-3 rounded-2xl outline-none text-sm" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                                         </div>
                                         <div className="flex flex-wrap gap-2 w-full xl:w-auto items-center">
-                                            <div className="flex bg-white rounded-2xl shadow-soft p-1">
-                                                {['Todas', 'Pendentes', 'Já chegou'].map(p => (
+                                            <div className="flex bg-white rounded-2xl shadow-soft p-1 overflow-x-auto no-scrollbar">
+                                                {['Todas', 'Pendentes', 'Já chegou', 'Ausentes'].map(p => (
                                                     <button 
                                                         key={p} 
                                                         onClick={() => setPresenceFilter(p)} 
-                                                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${presenceFilter === p ? 'text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
+                                                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${presenceFilter === p ? 'text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
                                                         style={presenceFilter === p ? { backgroundColor: settings.primaryColor } : {}}
                                                     >
                                                         {p}
@@ -388,7 +380,14 @@
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                         {filteredGuests.map(guest => (
-                                            <div key={guest.id} onClick={() => setSelectedGuestView(guest)} className={`bg-white p-6 rounded-[2.5rem] shadow-soft border border-transparent hover:border-pink-100 transition-all group relative cursor-pointer ${guest.rsvp === 'Confirmado' ? 'rsvp-confirmed' : guest.rsvp === 'Recusado' ? 'rsvp-rejected' : 'rsvp-pending'}`}>
+                                            <div 
+                                                key={guest.id} 
+                                                onClick={() => setSelectedGuestView(guest)} 
+                                                className={`bg-white p-6 rounded-[2.5rem] shadow-soft border-2 transition-all group relative cursor-pointer 
+                                                    ${guest.rsvp === 'Recusado' ? 'border-red-400' : 'border-transparent'}
+                                                    ${presenceFilter === 'Todas' ? (guest.rsvp === 'Confirmado' ? 'rsvp-confirmed' : guest.rsvp === 'Recusado' ? 'rsvp-rejected' : 'rsvp-pending') : ''}
+                                                `}
+                                            >
                                                 <div className="flex items-center gap-4 mb-6">
                                                     <div className="w-16 h-16 rounded-2xl bg-slate-50 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
                                                         {guest.photo ? <img src={guest.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-200"><Icon name="User" size={24} /></div>}
@@ -425,7 +424,7 @@
                                 </div>
                             </>
                         )}
-
+                        
                         {activeTab === 'schedule' && (
                             <div className="max-w-3xl mx-auto space-y-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -515,41 +514,105 @@
                         )}
                     </main>
 
-                    {/* Modal Detalhes View */}
+                    {/* MODAL LISTA DO DASHBOARD */}
+                    {dashboardListView && (
+                        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 detail-modal-bg animate-in fade-in duration-300">
+                            <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden relative flex flex-col max-h-[85vh]">
+                                <div className="p-8 border-b flex justify-between items-center bg-slate-50">
+                                    <div>
+                                        <h3 className="text-2xl font-serif font-bold leading-none">{dashboardListView.title}</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">{dashboardListView.list.length} convidadas encontradas</p>
+                                    </div>
+                                    <button onClick={() => setDashboardListView(null)} className="p-3 bg-white rounded-2xl text-slate-300 shadow-sm hover:text-pink-500 transition-all"><Icon name="X" /></button>
+                                </div>
+                                
+                                <div className="flex-1 overflow-y-auto p-8 no-scrollbar">
+                                    {dashboardListView.list.length === 0 ? (
+                                        <p className="text-center text-slate-300 font-medium py-10 italic">Nenhuma convidada nesta categoria.</p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {dashboardListView.list.sort((a,b) => (a.name || "").localeCompare(b.name || "")).map((g, idx) => (
+                                                <div key={g.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-[10px] font-black text-slate-200 w-4">{idx + 1}</span>
+                                                        <div>
+                                                            <p className="font-bold text-slate-800 text-sm leading-none">{g.name}</p>
+                                                            <p className="text-[9px] font-black uppercase text-pink-400 mt-1 tracking-tighter">{g.category}</p>
+                                                        </div>
+                                                    </div>
+                                                    {g.giftId && (
+                                                        <span className="text-[10px] font-black px-2 py-1 bg-white rounded-lg border text-slate-400">#{g.giftId}</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="p-6 bg-slate-50 border-t flex justify-center">
+                                    <button onClick={() => setDashboardListView(null)} className="px-10 py-3 text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest shadow-lg" style={{ backgroundColor: settings.primaryColor }}>Fechar Lista</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL DETALHES (TELA EXPANDIDA) */}
                     {selectedGuestView && (
                         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 detail-modal-bg animate-in fade-in duration-300">
                             <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden relative p-10">
-                                <button onClick={() => setSelectedGuestView(null)} className="absolute top-6 right-6 text-slate-300"><Icon name="X" /></button>
+                                <button onClick={() => setSelectedGuestView(null)} className="absolute top-6 right-6 text-slate-300 hover:text-pink-500 transition-colors"><Icon name="X" /></button>
+                                
                                 <div className="flex flex-col md:flex-row gap-8">
                                     <div className="flex flex-col gap-4 items-center">
-                                        <div className="w-40 h-40 rounded-[2.5rem] bg-slate-50 overflow-hidden shadow-lg border">
+                                        <div className="w-40 h-40 rounded-[2.5rem] bg-slate-50 overflow-hidden shadow-lg border relative">
                                             {selectedGuestView.photo ? <img src={selectedGuestView.photo} className="w-full h-full object-cover" /> : <Icon name="User" size={60} className="m-auto mt-10 text-slate-200" />}
+                                            {selectedGuestView.arrived && (
+                                                <div className="absolute top-2 right-2 bg-emerald-500 text-white p-1.5 rounded-lg shadow-lg">
+                                                    <Icon name="Check" size={14} />
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="w-40 h-40 rounded-3xl bg-slate-50 overflow-hidden shadow-md border">
                                             {selectedGuestView.giftPhoto ? <img src={selectedGuestView.giftPhoto} className="w-full h-full object-cover" /> : <Icon name="Gift" size={40} className="m-auto mt-14 text-slate-200" />}
                                         </div>
                                     </div>
+                                    
                                     <div className="flex-1 space-y-6">
                                         <div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: settings.secondaryColor }}>{selectedGuestView.category}</p>
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: settings.secondaryColor }}>{selectedGuestView.category}</p>
+                                                {selectedGuestView.arrived && (
+                                                    <span className="bg-emerald-100 text-emerald-700 text-[8px] font-black uppercase px-2 py-0.5 rounded-full border border-emerald-200">Já Chegou</span>
+                                                )}
+                                            </div>
                                             <h2 className="text-3xl font-serif font-bold leading-tight">{selectedGuestView.name}</h2>
                                         </div>
+
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="bg-slate-50 p-4 rounded-2xl">
                                                 <p className="text-[9px] font-bold text-slate-300 uppercase">RSVP</p>
                                                 <p className="font-bold">{selectedGuestView.rsvp}</p>
                                             </div>
-                                            <div className="bg-slate-50 p-4 rounded-2xl">
-                                                <p className="text-[9px] font-bold text-slate-300 uppercase">Entrada</p>
-                                                <p className="font-bold">{selectedGuestView.arrived ? 'Sim' : 'Não'}</p>
+                                            
+                                            <div className={`p-4 rounded-2xl transition-colors ${selectedGuestView.arrived ? 'bg-emerald-500 border border-emerald-600' : 'bg-slate-50'}`}>
+                                                <p className={`text-[9px] font-bold uppercase ${selectedGuestView.arrived ? 'text-emerald-100' : 'text-slate-300'}`}>Status de Entrada</p>
+                                                <p className={`font-bold ${selectedGuestView.arrived ? 'text-white' : 'text-slate-400'}`}>
+                                                    {selectedGuestView.arrived ? 'PRESENÇA CONFIRMADA' : 'AGUARDANDO CHEGADA'}
+                                                </p>
                                             </div>
                                         </div>
+
                                         <div className="bg-slate-50 p-6 rounded-2xl">
                                             <p className="text-[9px] font-bold text-slate-300 uppercase mb-2 leading-none">Presente: {selectedGuestView.giftId ? `#${selectedGuestView.giftId}` : '---'}</p>
-                                            <p className="text-slate-600 font-medium">{selectedGuestView.gift || 'Sem descrição.'}</p>
+                                            <p className="text-slate-600 font-medium text-sm">{selectedGuestView.gift || 'Sem descrição.'}</p>
                                         </div>
-                                        <button onClick={() => { handleSave('guests', { arrived: !selectedGuestView.arrived }, selectedGuestView.id); setSelectedGuestView(null); }} className={`w-full py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg ${selectedGuestView.arrived ? 'bg-slate-100 text-slate-400' : 'text-white'}`} style={!selectedGuestView.arrived ? { backgroundColor: settings.primaryColor } : {}}>
-                                            {selectedGuestView.arrived ? 'Cancelar Entrada' : 'Confirmar Entrada'}
+
+                                        <button 
+                                            onClick={() => { handleSave('guests', { arrived: !selectedGuestView.arrived }, selectedGuestView.id); setSelectedGuestView(prev => ({...prev, arrived: !prev.arrived})); }} 
+                                            className={`w-full py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg transition-all ${selectedGuestView.arrived ? 'bg-slate-100 text-slate-400' : 'text-white'}`} 
+                                            style={!selectedGuestView.arrived ? { backgroundColor: settings.primaryColor } : {}}
+                                        >
+                                            {selectedGuestView.arrived ? 'Remover Entrada' : 'Confirmar Entrada'}
                                         </button>
                                     </div>
                                 </div>
@@ -557,10 +620,10 @@
                         </div>
                     )}
 
-                    {/* Modal Ajustes (Edição) */}
+                    {/* MODAL EDIÇÃO */}
                     {editingGuest && (
                         <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
-                            <div className="bg-white w-full max-w-xl rounded-[3rem] p-8 shadow-2xl my-auto animate-in zoom-in duration-300">
+                            <div className="bg-white w-full max-w-xl rounded-[3rem] p-8 shadow-2xl my-auto">
                                 <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-serif font-bold">Ficha da Convidada</h3><button onClick={() => setEditingGuest(null)} className="p-2 text-slate-300"><Icon name="X" /></button></div>
                                 <div className="space-y-6">
                                     <div className="grid grid-cols-2 gap-4">
@@ -573,7 +636,7 @@
                                             <input type="file" className="hidden" accept="image/*" onChange={e => handlePhotoUpload(e, (p) => setEditingGuest({...editingGuest, giftPhoto: p}))} />
                                         </label>
                                     </div>
-                                    <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm" placeholder="Nome da Convidada" value={editingGuest.name} onChange={e => setEditingGuest({...editingGuest, name: e.target.value})} />
+                                    <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm" placeholder="Nome" value={editingGuest.name} onChange={e => setEditingGuest({...editingGuest, name: e.target.value})} />
                                     <div className="grid grid-cols-2 gap-4">
                                         <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs" value={editingGuest.category} onChange={e => setEditingGuest({...editingGuest, category: e.target.value})}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
                                         <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs" value={editingGuest.rsvp} onChange={e => setEditingGuest({...editingGuest, rsvp: e.target.value})}>{RSVP_STATUS.map(s => <option key={s} value={s}>{s}</option>)}</select>
@@ -582,23 +645,20 @@
                                         <input className="w-24 p-4 bg-slate-50 rounded-2xl outline-none font-black text-center text-xs" placeholder="Nº ITEM" value={editingGuest.giftId} onChange={e => setEditingGuest({...editingGuest, giftId: e.target.value})} />
                                         <input className="flex-1 p-4 bg-slate-50 rounded-2xl outline-none font-medium text-xs" placeholder="O que é o presente?" value={editingGuest.gift} onChange={e => setEditingGuest({...editingGuest, gift: e.target.value})} />
                                     </div>
-                                    <div className="flex gap-4 pt-4">
-                                        <button onClick={() => { handleSave('guests', editingGuest, editingGuest.id); setEditingGuest(null); }} className="w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-opacity hover:opacity-90" style={{ backgroundColor: settings.primaryColor }}>Salvar</button>
-                                    </div>
+                                    <button onClick={() => { handleSave('guests', editingGuest, editingGuest.id); setEditingGuest(null); }} className="w-full py-4 text-white rounded-2xl font-bold shadow-lg" style={{ backgroundColor: settings.primaryColor }}>Salvar</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Modal Importar */}
+                    {/* MODAL IMPORTAÇÃO */}
                     {isImportModalOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
                             <div className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl my-auto animate-in zoom-in duration-300">
                                 <div className="flex justify-between items-center mb-6">
                                     <h3 className="text-xl font-serif font-bold">Importação em Massa</h3>
-                                    <button onClick={() => setIsImportModalOpen(false)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors"><Icon name="X" /></button>
+                                    <button onClick={() => setIsImportModalOpen(false)} className="p-2 text-slate-300"><Icon name="X" /></button>
                                 </div>
-                                <p className="text-[10px] text-slate-400 mb-4 bg-slate-50 p-3 rounded-xl">Formato: <strong>Nome - Categoria</strong> (ex: Maria - Família Noiva). Uma convidada por linha.</p>
                                 <textarea className="w-full h-64 p-5 bg-slate-50 rounded-2xl outline-none text-sm font-medium focus:ring-2 focus:ring-pink-100 transition-all resize-none mb-6" value={importText} onChange={e => setImportText(e.target.value)} disabled={isImporting} placeholder="Nome - Categoria" />
                                 <div className="flex gap-4">
                                     <button onClick={() => setIsImportModalOpen(false)} className="flex-1 py-4 text-slate-400 font-bold uppercase text-xs" disabled={isImporting}>Cancelar</button>
@@ -610,7 +670,7 @@
                         </div>
                     )}
 
-                    {/* Modal Confirmação de Exclusão */}
+                    {/* MODAL EXCLUSÃO */}
                     {itemToDelete && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
                             <div className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl text-center">
@@ -618,10 +678,10 @@
                                     <Icon name="Trash" size={32} />
                                 </div>
                                 <h3 className="text-xl font-serif font-bold mb-2">Eliminar Item?</h3>
-                                <p className="text-sm text-slate-400 mb-8">Tens a certeza que queres eliminar <strong>"{itemToDelete.name}"</strong>? Esta ação não pode ser desfeita.</p>
+                                <p className="text-sm text-slate-400 mb-8">Desejas eliminar "{itemToDelete.name}"?</p>
                                 <div className="flex gap-3">
-                                    <button onClick={() => setItemToDelete(null)} className="flex-1 py-3 text-slate-400 font-bold text-xs uppercase rounded-xl hover:bg-slate-50 transition-colors">Cancelar</button>
-                                    <button onClick={confirmDelete} className="flex-1 py-3 bg-red-500 text-white font-bold text-xs uppercase rounded-xl shadow-lg hover:bg-red-600 transition-colors">Eliminar</button>
+                                    <button onClick={() => setItemToDelete(null)} className="flex-1 py-3 text-slate-400 font-bold text-xs uppercase rounded-xl">Cancelar</button>
+                                    <button onClick={confirmDelete} className="flex-1 py-3 bg-red-500 text-white font-bold text-xs uppercase rounded-xl shadow-lg">Eliminar</button>
                                 </div>
                             </div>
                         </div>
