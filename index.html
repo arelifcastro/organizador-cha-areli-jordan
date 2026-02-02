@@ -42,8 +42,27 @@
         .dash-card { transition: all 0.3s ease; cursor: pointer; border: 2px solid transparent; }
         .dash-card:hover { transform: translateY(-4px); border-color: rgba(236, 72, 153, 0.2); background-color: #fdf2f8; }
 
-        .toast-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 1rem; border-radius: 1rem; margin-bottom: 1rem; font-size: 0.75rem; font-weight: bold; display: flex; align-items: center; gap: 0.5rem; }
-        .toast-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; padding: 1rem; border-radius: 1rem; margin-bottom: 1rem; font-size: 0.75rem; font-weight: bold; display: flex; align-items: center; gap: 0.5rem; }
+        /* Notificações Flutuantes */
+        .toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 200; pointer-events: none; }
+        .toast-base { 
+            pointer-events: auto;
+            padding: 0.75rem 1.25rem; 
+            border-radius: 1rem; 
+            font-size: 0.75rem; 
+            font-weight: 700; 
+            display: flex; 
+            align-items: center; 
+            gap: 0.6rem; 
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            animation: toast-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            min-width: 240px;
+        }
+        @keyframes toast-slide-in {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-error { background: #ffffff; color: #991b1b; border: 1px solid #fee2e2; border-left: 4px solid #f87171; }
+        .toast-success { background: #ffffff; color: #065f46; border: 1px solid #d1fae5; border-left: 4px solid #34d399; }
     </style>
 </head>
 <body class="text-slate-800">
@@ -212,9 +231,10 @@
                         await sdk.addDoc(sdk.collection(db, ...colPath), { ...data, createdAt: Date.now() });
                     }
                     setFeedback({ message: 'Dados guardados!', type: 'success' });
-                    setTimeout(() => setFeedback({ message: '', type: '' }), 2000);
+                    setTimeout(() => setFeedback({ message: '', type: '' }), 2500);
                 } catch (e) { 
                     setFeedback({ message: 'Erro ao gravar!', type: 'error' });
+                    setTimeout(() => setFeedback({ message: '', type: '' }), 3000);
                 }
             };
 
@@ -223,10 +243,12 @@
                 try {
                     const { col, id } = itemToDelete;
                     await sdk.deleteDoc(sdk.doc(db, 'artifacts', appId, 'public', 'data', col, id));
-                    setFeedback({ message: 'Removido!', type: 'success' });
+                    setFeedback({ message: 'Removido com sucesso!', type: 'success' });
                     setItemToDelete(null);
+                    setTimeout(() => setFeedback({ message: '', type: '' }), 2500);
                 } catch (e) {
                     setFeedback({ message: 'Erro ao eliminar!', type: 'error' });
+                    setTimeout(() => setFeedback({ message: '', type: '' }), 3000);
                 }
             };
 
@@ -257,6 +279,8 @@
                     await batch.commit();
                     setIsImportModalOpen(false);
                     setImportText('');
+                    setFeedback({ message: `${lines.length} convidadas importadas!`, type: 'success' });
+                    setTimeout(() => setFeedback({ message: '', type: '' }), 3000);
                 } finally { setIsImporting(false); }
             };
 
@@ -301,6 +325,16 @@
 
             return (
                 <div className="min-h-screen pb-20 transition-colors-custom" style={{ backgroundColor: settings.tertiaryColor }}>
+                    {/* Contentor de Toasts Flutuantes */}
+                    <div className="toast-container">
+                        {feedback.message && (
+                            <div className={`toast-base ${feedback.type === 'error' ? 'toast-error' : 'toast-success'}`}>
+                                <Icon name={feedback.type === 'error' ? 'AlertCircle' : 'Check'} size={18} />
+                                <span>{feedback.message}</span>
+                            </div>
+                        )}
+                    </div>
+
                     <header className="glass sticky top-0 z-40 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
                         <div className="text-center md:text-left cursor-pointer" onClick={() => { setActiveTab('guests'); setPresenceFilter('Todas'); }}>
                             <h1 className="text-xl md:text-2xl font-serif font-bold transition-colors-custom" style={{ color: settings.primaryColor }}>{settings.title}</h1>
@@ -316,13 +350,6 @@
                     </header>
 
                     <main className="max-w-6xl mx-auto px-6 mt-8">
-                        {feedback.message && (
-                            <div className={feedback.type === 'error' ? 'toast-error' : 'toast-success'}>
-                                <Icon name={feedback.type === 'error' ? 'AlertCircle' : 'Check'} size={16} />
-                                {feedback.message}
-                            </div>
-                        )}
-
                         {activeTab === 'guests' && (
                             <>
                                 <section className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-10">
