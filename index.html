@@ -78,7 +78,7 @@
         const Icon = ({ name, size = 20, className = "" }) => {
             const icons = {
                 Users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
-                Settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2a2 2 0 0 1-2 2a2 2 0 0 0-2 2a2 2 0 0 1-2 2a2 2 0 0 0-2 2v.44a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2a2 2 0 0 1 2-2a2 2 0 0 0 2-2a2 2 0 0 1 2-2a2 2 0 0 0 2-2v-.44a2 2 0 0 0-2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2ZM9 12a3 3 0 1 0 6 0a3 3 0 0 0-6 0Z"/></>,
+                Settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2a2 2 0 0 0-2 2a2 2 0 0 0-2 2a2 2 0 0 0-2 2v.44a2 2 0 0 0 2 2a2 2 0 0 0 2 2a2 2 0 0 0 2 2a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2a2 2 0 0 0 2-2a2 2 0 0 0 2-2a2 2 0 0 0 2-2v-.44a2 2 0 0 0-2-2a2 2 0 0 0-2-2a2 2 0 0 0-2-2a2 2 0 0 0-2-2ZM9 12a3 3 0 1 0 6 0a3 3 0 0 0-6 0Z"/></>,
                 Plus: <><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></>,
                 Trash: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></>,
                 Camera: <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></>,
@@ -359,7 +359,7 @@
                                         { key: 'Ausentes', label: 'Ausentes', val: stats.absent, color: 'text-red-400' },
                                         { key: 'Pendentes', label: 'Não chegaram', val: stats.notArrived, color: 'text-amber-500' },
                                         { key: 'Já chegou', label: 'Já chegou!', val: stats.arrived, color: 'text-emerald-700' }
-                                    ].map((s) => (
+                                    ].map((s, i) => (
                                         <div 
                                             key={s.key} 
                                             onClick={() => {
@@ -373,7 +373,8 @@
                                                 }
                                                 setDashboardListView({ title: s.label, list: listToShow });
                                             }}
-                                            className="dash-card p-5 rounded-[2rem] shadow-soft flex flex-col items-center text-center bg-white"
+                                            /* Ajuste Mobile: O 5º item (Já chegou) ocupa as 2 colunas e centraliza */
+                                            className={`dash-card p-5 rounded-[2rem] shadow-soft flex flex-col items-center text-center bg-white ${i === 4 ? 'col-span-2 md:col-span-1' : ''}`}
                                         >
                                             <span className="text-[9px] font-black uppercase tracking-tighter text-slate-400 mb-2 leading-none h-4 flex items-center">{s.label}</span>
                                             <span className={`text-2xl md:text-3xl font-serif font-bold ${s.color}`}>{s.val}</span>
