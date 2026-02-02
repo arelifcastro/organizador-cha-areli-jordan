@@ -35,7 +35,8 @@
         .upload-small { border: 2px dashed #e2e8f0; transition: all 0.2s; }
         .upload-small:hover { border-color: currentColor; background: rgba(255,255,255,0.8); }
         
-        .rsvp-pending { border-left: 6px solid #cbd5e1; }
+        /* Indicadores RSVP na lateral - Agora com Azul para Pendente */
+        .rsvp-pending { border-left: 6px solid #60a5fa; } 
         .rsvp-confirmed { border-left: 6px solid #10b981; }
         .rsvp-rejected { border-left: 6px solid #f43f5e; }
         
@@ -78,7 +79,7 @@
         const Icon = ({ name, size = 20, className = "" }) => {
             const icons = {
                 Users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
-                Settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2a2 2 0 0 0-2 2a2 2 0 0 0-2 2a2 2 0 0 0-2 2v.44a2 2 0 0 0 2 2a2 2 0 0 0 2 2a2 2 0 0 0 2 2a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2a2 2 0 0 0 2-2a2 2 0 0 0 2-2a2 2 0 0 0 2-2v-.44a2 2 0 0 0-2-2a2 2 0 0 0-2-2a2 2 0 0 0-2-2a2 2 0 0 0-2-2ZM9 12a3 3 0 1 0 6 0a3 3 0 0 0-6 0Z"/></>,
+                Settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2a2 2 0 0 0-2 2a2 2 0 0 0-2 2a2 2 0 0 0-2 2v.44a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2a2 2 0 0 0 2-2a2 2 0 0 0 2-2a2 2 0 0 0 2-2v-.44a2 2 0 0 0-2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2ZM9 12a3 3 0 1 0 6 0a3 3 0 0 0-6 0Z"/></>,
                 Plus: <><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></>,
                 Trash: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></>,
                 Camera: <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></>,
@@ -306,7 +307,7 @@
                     
                     let matchesPres = true;
                     switch(presenceFilter) {
-                        case 'Pendentes': matchesPres = g.rsvp === 'Confirmado' && !g.arrived; break;
+                        case 'Pendentes': matchesPres = g.rsvp === 'Pendente'; break;
                         case 'Já chegou': matchesPres = g.arrived; break;
                         case 'Ausentes': matchesPres = g.rsvp === 'Recusado'; break;
                         case 'Todas': matchesPres = true; break;
@@ -357,7 +358,7 @@
                                         { key: 'Todas', label: 'Lista', val: stats.total, color: 'text-slate-600' },
                                         { key: 'Confirmadas', label: 'Confirmadas', val: stats.confirmed, color: 'text-emerald-500' },
                                         { key: 'Ausentes', label: 'Ausentes', val: stats.absent, color: 'text-red-400' },
-                                        { key: 'Pendentes', label: 'Não chegaram', val: stats.notArrived, color: 'text-amber-500' },
+                                        { key: 'Pendentes', label: 'Pendentes', val: stats.total - stats.confirmed - stats.absent, color: 'text-blue-500' },
                                         { key: 'Já chegou', label: 'Já chegou!', val: stats.arrived, color: 'text-emerald-700' }
                                     ].map((s, i) => (
                                         <div 
@@ -368,12 +369,11 @@
                                                     case 'Todas': listToShow = guests; break;
                                                     case 'Confirmadas': listToShow = guests.filter(g => g.rsvp === 'Confirmado'); break;
                                                     case 'Ausentes': listToShow = guests.filter(g => g.rsvp === 'Recusado'); break;
-                                                    case 'Pendentes': listToShow = guests.filter(g => g.rsvp === 'Confirmado' && !g.arrived); break;
+                                                    case 'Pendentes': listToShow = guests.filter(g => g.rsvp === 'Pendente'); break;
                                                     case 'Já chegou': listToShow = guests.filter(g => g.arrived); break;
                                                 }
                                                 setDashboardListView({ title: s.label, list: listToShow });
                                             }}
-                                            /* Ajuste Mobile: O 5º item (Já chegou) ocupa as 2 colunas e centraliza */
                                             className={`dash-card p-5 rounded-[2rem] shadow-soft flex flex-col items-center text-center bg-white ${i === 4 ? 'col-span-2 md:col-span-1' : ''}`}
                                         >
                                             <span className="text-[9px] font-black uppercase tracking-tighter text-slate-400 mb-2 leading-none h-4 flex items-center">{s.label}</span>
@@ -411,8 +411,9 @@
                                             <div 
                                                 key={guest.id} 
                                                 onClick={() => setSelectedGuestView(guest)} 
+                                                /* ATUALIZAÇÃO: Traçado Verde (Confirmado), Azul (Pendente), Vermelho (Ausente) */
                                                 className={`bg-white p-6 rounded-[2.5rem] shadow-soft border-2 transition-all group relative cursor-pointer 
-                                                    ${guest.rsvp === 'Recusado' ? 'border-red-400' : 'border-transparent'}
+                                                    ${guest.rsvp === 'Recusado' ? 'border-red-400' : guest.rsvp === 'Pendente' ? 'border-blue-400' : guest.rsvp === 'Confirmado' ? 'border-emerald-400' : 'border-transparent'}
                                                     ${presenceFilter === 'Todas' ? (guest.rsvp === 'Confirmado' ? 'rsvp-confirmed' : guest.rsvp === 'Recusado' ? 'rsvp-rejected' : 'rsvp-pending') : ''}
                                                 `}
                                             >
